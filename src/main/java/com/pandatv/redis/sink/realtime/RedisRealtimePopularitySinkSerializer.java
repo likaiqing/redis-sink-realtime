@@ -16,8 +16,8 @@ import java.util.*;
 /**
  * Created by likaiqing on 2017/6/23.
  */
-public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSerializer {
-    private static final Logger logger = LoggerFactory.getLogger(RedisRealtimeBatchCascadSinkSerializer.class);
+public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializer {
+    private static final Logger logger = LoggerFactory.getLogger(RedisRealtimePopularitySinkSerializer.class);
     private static final String redisKeySep = "-";
     private static Set<String> minuteFields = new HashSet<>();
     private static Set<String> parDates = new HashSet<>();
