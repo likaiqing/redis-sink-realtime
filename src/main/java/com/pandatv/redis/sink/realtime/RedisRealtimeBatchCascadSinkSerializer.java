@@ -1,5 +1,7 @@
 package com.pandatv.redis.sink.realtime;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -9,10 +11,7 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Created by likaiqing on 2017/6/23.
@@ -56,10 +55,14 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
             logger.info("actionList,events.size:" + events.size());
             pipelined.sync();
             pipelined.clear();
+            logger.info("pipelineExecute over,parDates.size():" + parDates.size() + ";minutes.size():" + minuteFields.size());
             if (hsetCascadHset && timeHelper.checkout()) {
                 for (String field : minuteFields) {
-                    String hsetKey = getHsetKey(field);
+                    logger.info("executeCascadHset,field:" + field);
+                    executeCascadHset(field, jedis);
                 }
+                minuteFields.clear();
+                parDates.clear();
             }
 
         } catch (Exception e) {
@@ -69,12 +72,45 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
         return events.size() - err;
     }
 
-    private String getHsetKey(String field) {
-        String parDate="";
-        if (parDates.size()==1){
-
+    private void executeCascadHset(String field, Jedis jedis) {
+        if (parDates.size() == 1) {
+            logger.info("parDates.size==" + parDates.size());
+            String parDate = Lists.newArrayList(parDates).get(0);
+            logger.info("executeHset,field=" + field + ";parDate:" + parDate);
+            executeHset(field, parDate, jedis);
+        } else if (parDates.size() == 2) {
+            logger.info("parDates.size==" + parDates.size());
+            ArrayList<String> parDateList = Lists.newArrayList(parDates);
+            String first = parDateList.get(0);
+            String seconde = parDateList.get(1);
+            String little = first.compareTo(seconde) < 0 ? first : seconde;
+            String big = first.compareTo(seconde) > 0 ? first : seconde;
+            if (field.startsWith("0")) {//新的一天,匹配big
+                logger.info("executeHset,field=" + field + ";parDate:" + big);
+                executeHset(field, big, jedis);
+            } else {//昨天,匹配little
+                logger.info("executeHset,field=" + field + ";parDate:" + little);
+                executeHset(field, little, jedis);
+            }
+        } else {
+            logger.error("parDates.size<0 or parDates.size>=3");
         }
-        return null;
+    }
+
+    private void executeHset(String field, String parDate, Jedis jedis) {
+        String minuteKey = new StringBuffer(hsetKeyPrefix).append(field).append(redisKeySep).append(hsetKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
+        String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(redisKeySep).append(hsetHashKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
+        int total = 0;
+        logger.info("minuteKey:" + minuteKey + ";newKey:" + newKey);
+        for (String value : jedis.hvals(minuteKey)) {
+            try {
+                total = total + Integer.parseInt(value);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        logger.info("jedis.hset,newKey:" + newKey + ";field:" + field + ";total:" + total);
+        jedis.hset(newKey, field, total + "");
     }
 
     private void pipelineExecute(Event event, Pipeline pipelined) {
@@ -82,7 +118,7 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
         String key = getKey(headers);
         String field = getField(headers);
         String value = getValue(headers);
-        minuteFields.add(field);
+        minuteFields.add(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1)));
         parDates.add(headers.get("par_date"));
         pipelined.hset(key, field, value);
         pipelined.expire(key, hsetExpire);
@@ -105,16 +141,8 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
     }
 
     public String getKey(Map<String, String> headers) {
-        String key = hsetKeyPrefix;
-        if (StringUtils.isNotEmpty(hsetKeyPreVar)) {
-            if (hsetKeyPreVar.contains("${")) {
-                key = key + headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1)) + redisKeySep;
-            } else {
-
-            }
-        }
-        key = key + hsetKeyName + redisKeySep + hsetKeySuffix;
-        return key;
+        Preconditions.checkArgument(hsetKeyPreVar.contains("${"), "hsetKeyPreVar must be variable");
+        return new StringBuffer(hsetKeyPrefix).append(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1))).append(redisKeySep).append(hsetKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
     }
 
     class TimeHelper {
