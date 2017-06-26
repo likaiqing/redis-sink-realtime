@@ -52,13 +52,13 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
             }
-            logger.info("actionList,events.size:" + events.size());
+//            logger.info("actionList,events.size:" + events.size());
             pipelined.sync();
             pipelined.clear();
-            logger.info("pipelineExecute over,parDates.size():" + parDates.size() + ";minutes.size():" + minuteFields.size());
+//            logger.info("pipelineExecute over,parDates.size():" + parDates.size() + ";minutes.size():" + minuteFields.size());
             if (hsetCascadHset && timeHelper.checkout()) {
                 for (String field : minuteFields) {
-                    logger.info("executeCascadHset,field:" + field);
+//                    logger.info("executeCascadHset,field:" + field);
                     executeCascadHset(field, jedis);
                 }
                 minuteFields.clear();
@@ -74,26 +74,26 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
 
     private void executeCascadHset(String field, Jedis jedis) {
         if (parDates.size() == 1) {
-            logger.info("parDates.size==" + parDates.size());
+//            logger.info("parDates.size==" + parDates.size());
             String parDate = Lists.newArrayList(parDates).get(0);
-            logger.info("executeHset,field=" + field + ";parDate:" + parDate);
+//            logger.info("executeHset,field=" + field + ";parDate:" + parDate);
             executeHset(field, parDate, jedis);
         } else if (parDates.size() == 2) {
-            logger.info("parDates.size==" + parDates.size());
+//            logger.info("parDates.size==" + parDates.size());
             ArrayList<String> parDateList = Lists.newArrayList(parDates);
             String first = parDateList.get(0);
             String seconde = parDateList.get(1);
             String little = first.compareTo(seconde) < 0 ? first : seconde;
             String big = first.compareTo(seconde) > 0 ? first : seconde;
             if (field.startsWith("0")) {//新的一天,匹配big
-                logger.info("executeHset,field=" + field + ";parDate:" + big);
+//                logger.info("executeHset,field=" + field + ";parDate:" + big);
                 executeHset(field, big, jedis);
             } else {//昨天,匹配little
-                logger.info("executeHset,field=" + field + ";parDate:" + little);
+//                logger.info("executeHset,field=" + field + ";parDate:" + little);
                 executeHset(field, little, jedis);
             }
         } else {
-            logger.error("parDates.size<0 or parDates.size>=3");
+//            logger.error("parDates.size<0 or parDates.size>=3");
         }
     }
 
@@ -101,7 +101,7 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
         String minuteKey = new StringBuffer(hsetKeyPrefix).append(field).append(redisKeySep).append(hsetKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
         String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(redisKeySep).append(hsetHashKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
         int total = 0;
-        logger.info("minuteKey:" + minuteKey + ";newKey:" + newKey);
+//        logger.info("minuteKey:" + minuteKey + ";newKey:" + newKey);
         for (String value : jedis.hvals(minuteKey)) {
             try {
                 total = total + Integer.parseInt(value);
@@ -109,7 +109,7 @@ public class RedisRealtimeBatchCascadSinkSerializer implements RedisEventSeriali
                 e.printStackTrace();
             }
         }
-        logger.info("jedis.hset,newKey:" + newKey + ";field:" + field + ";total:" + total);
+//        logger.info("jedis.hset,newKey:" + newKey + ";field:" + field + ";total:" + total);
         jedis.hset(newKey, field, total + "");
     }
 

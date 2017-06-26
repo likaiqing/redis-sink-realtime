@@ -428,7 +428,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
             for (Event event : events) {
                 pipelineExecute(event, jedis);
             }
-            logger.info("actionList,events.size:" + events.size());
+//            logger.info("actionList,events.size:" + events.size());
 //            pipelined.sync();
 //            pipelined.clear();
         } catch (Exception e) {
