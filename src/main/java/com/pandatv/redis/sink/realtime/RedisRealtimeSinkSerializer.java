@@ -9,9 +9,7 @@ import org.apache.flume.conf.ComponentConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.Pipeline;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -141,7 +139,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         saddHashKeySuffix = context.getString("saddHashKeySuffix");
     }
 
-    private void pipelineExecute(Event event, Pipeline pipelined) {
+    private void pipelineExecute(Event event, Jedis pipelined) {
         Map<String, String> headers = event.getHeaders();
         if (hincrby) {
             pipelineExecuteHincrby(headers, pipelined);
@@ -155,7 +153,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         }
     }
 
-    private void pipelineExecuteHincrby(Map<String, String> headers, Pipeline pipelined) {
+    private void pipelineExecuteHincrby(Map<String, String> headers, Jedis pipelined) {
         String hincrbyKey = hincrbyKeyPrefix;
         if (StringUtils.isNotEmpty(hincrbyKeyPreVar) && hincrbyKeyPreVar.contains("${")) {
             String keyPreValue = headers.get(hincrbyKeyPreVar.substring(2, hincrbyKeyPreVar.length() - 1));
@@ -164,7 +162,6 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         String[] hincrbyKeyNameArr = hincrbyKeyName.split("\\s+");
         String[] hincrbyKeySuffixArr = hincrbyKeySuffix.split("\\s+");
         String[] hincrbyKeyConditionArr = hincrbyKeyCondition.split("\\s+");
-        Preconditions.checkArgument(hincrbyKeyNameArr.length == hincrbyKeySuffixArr.length && hincrbyKeyNameArr.length == hincrbyKeyConditionArr.length, "hincrbyKeyName hincrbyKeySuffix hincrbyCondition size must equal");
         for (int i = 0; i < hincrbyKeyNameArr.length; i++) {
             String conditionStr = hincrbyKeyConditionArr[i];
             boolean checkContinue = checkContinue(conditionStr, headers);
@@ -174,24 +171,13 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
             String key = getKey(headers, hincrbyKey, hincrbyKeyNameArr, hincrbyKeySuffixArr, i);
             String[] hincrbyFieldArr = hincrbyField.split("\\s+");
             String[] hincrbyValueArr = hincrbyValue.split("\\s+");
-            Preconditions.checkArgument(hincrbyFieldArr.length == hincrbyValueArr.length, "hincrbyFieldArr hincrbyValueArr size must equal");
-            for (int j = 0; j < hincrbyFieldArr.length; j++) {
-                String field = getField(hincrbyFieldArr[j], headers);
-                String valueStr = hincrbyValueArr[i];
-                boolean isIntValue = isIntValue(valueStr, headers);
-                int intValue = 1;
-                double doubleValue = 1.0;
-                if (isIntValue) {
-                    intValue = getIntValue(valueStr, headers);
-                    pipelined.hincrBy(key, field, intValue);
-                } else {
-                    doubleValue = getDoubleValue(valueStr, headers);
-                    pipelined.hincrByFloat(key, field, doubleValue);
-                }
-            }
-            if (saddExpire > 0) {
-                pipelined.expire(key, hincrbyExpire);
-            }
+            String field = getField(hincrbyFieldArr[i], headers);
+            String valueStr = hincrbyValueArr[i];
+            int intValue = getIntValue(valueStr, headers);
+            pipelined.hincrBy(key, field, intValue);
+//            if (saddExpire > 0) {
+//                pipelined.expire(key, hincrbyExpire);
+//            }
         }
     }
 
@@ -260,7 +246,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         return result;
     }
 
-    private void pipelineExecuteSadd(Map<String, String> headers, Pipeline pipelined) {
+    private void pipelineExecuteSadd(Map<String, String> headers, Jedis pipelined) {
         String saddKey = saddKeyPrefix;
         if (StringUtils.isNotEmpty(saddKeyPreVar) && saddKeyPreVar.contains("${")) {
             String keyPreValue = headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1));
@@ -286,26 +272,27 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
                 pipelined.expire(key, saddExpire);
             }
             if (saddCascadHset) {
-                pipelined.sync();
-                try {
-                    pipelined.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                long uv = jedis.scard(key);
+//                pipelined.sync();
+//                try {
+//                    pipelined.close();
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+                long uv = pipelined.scard(key);
+//                pipelined = jedis.pipelined();
                 saddCascadHset(headers, key, uv, pipelined);
             }
         }
     }
 
-    private void saddCascadHset(Map<String, String> headers, String key, long value, Pipeline pipelined) {
+    private void saddCascadHset(Map<String, String> headers, String key, long value, Jedis pipelined) {
         String saddKeyPreVarValue = headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1));
         String saddHashKeyPreVarValue = headers.get(saddHashKeyPreVar.substring(2, saddHashKeyPreVar.length() - 1));
-        String hashKey = key.replace(saddHashKeyPreVar, saddHashKeyPreVarValue);
+        String hashKey = key.replace(saddKeyPreVarValue, saddHashKeyPreVarValue);
         pipelined.hset(hashKey, saddKeyPreVarValue, value + "");
     }
 
-    private void pipelineExecuteIncr(Map<String, String> headers, Pipeline pipelined) {
+    private void pipelineExecuteIncr(Map<String, String> headers, Jedis pipelined) {
         String incrKey = incrKeyPrefix;
         if (StringUtils.isNotEmpty(incrKeyPreVar) && incrKeyPreVar.contains("${")) {
             String keyPreValue = headers.get(incrKeyPreVar.substring(2, incrKeyPreVar.length() - 1));
@@ -437,12 +424,13 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
     public int actionList() {
         int err = 0;
         try {
-            Pipeline pipelined = jedis.pipelined();
+//            Pipeline pipelined = jedis.pipelined();
             for (Event event : events) {
-                pipelineExecute(event, pipelined);
+                pipelineExecute(event, jedis);
             }
-            pipelined.sync();
-            pipelined.clear();
+            logger.info("actionList,events.size:" + events.size());
+//            pipelined.sync();
+//            pipelined.clear();
         } catch (Exception e) {
             e.printStackTrace();
             err++;
