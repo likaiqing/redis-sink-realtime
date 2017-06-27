@@ -161,13 +161,13 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         hincrby = context.getBoolean("hincrby", false);
         hincrbyKeyPrefix = context.getString("hincrbyKeyPrefix");
         Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeyPrefix), "hincrbyKeyPrefix must not null");
+        hincrbyKeyPrefix = hincrbyKeyPrefix.endsWith(RedisSinkConstant.redisKeySep) ? hincrbyKeyPrefix : hincrbyKeyPrefix + RedisSinkConstant.redisKeySep;
         hincrbyKeyPreVar = context.getString("hincrbyKeyPreVar");
         Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeyPreVar) && hincrbyKeyPreVar.contains("${"), "hincrbyKeyPreVar must not null and contains ${");
         hincrbyKeyName = context.getString("hincrbyKeyName");
         Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeyName), "hincrbyKeyName must not null");
         hincrbyKeySuffix = context.getString("hincrbyKeySuffix");
         Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeySuffix), "hincrbyKeySuffix must not null");
-        hincrbyKeySuffix = hincrbyKeySuffix.endsWith(RedisSinkConstant.redisKeySep) ? hincrbyKeySuffix : hincrbyKeySuffix + RedisSinkConstant.redisKeySep;
         hincrbyField = context.getString("hincrbyField");
         Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyField) && hincrbyField.contains("${"), "hincrbyField must not null");
         hincrbyValue = context.getString("hincrbyValue");
