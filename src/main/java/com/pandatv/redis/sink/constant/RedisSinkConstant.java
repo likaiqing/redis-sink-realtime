@@ -7,4 +7,5 @@ public class RedisSinkConstant {
     public static final String BATCH_SIZE = "batchSize";
     public static final int DEFAULT_BATCH_SIZE = 1;
     public static final java.lang.String PROPERTY_PREFIX = "redis";
+    public static final String redisKeySep = "-";
 }

@@ -2,6 +2,8 @@ package com.pandatv.redis.sink.realtime;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.pandatv.redis.sink.constant.RedisSinkConstant;
+import com.pandatv.redis.sink.tools.TimeHelper;
 import org.apache.commons.lang.StringUtils;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -18,7 +20,6 @@ import java.util.*;
  */
 public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimePopularitySinkSerializer.class);
-    private static final String redisKeySep = "-";
     private static Set<String> minuteFields = new HashSet<>();
     private static Set<String> parDates = new HashSet<>();
     private static TimeHelper timeHelper = null;
@@ -93,13 +94,13 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                 executeHset(field, little, jedis);
             }
         } else {
-//            logger.error("parDates.size<0 or parDates.size>=3");
+            logger.error("parDates.size<0 or parDates.size>=3");
         }
     }
 
     private void executeHset(String field, String parDate, Jedis jedis) {
-        String minuteKey = new StringBuffer(hsetKeyPrefix).append(field).append(redisKeySep).append(hsetKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
-        String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(redisKeySep).append(hsetHashKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
+        String minuteKey = new StringBuffer(hsetKeyPrefix).append(field).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
+        String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(hsetHashKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
         int total = 0;
 //        logger.info("minuteKey:" + minuteKey + ";newKey:" + newKey);
         for (String value : jedis.hvals(minuteKey)) {
@@ -142,26 +143,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     public String getKey(Map<String, String> headers) {
         Preconditions.checkArgument(hsetKeyPreVar.contains("${"), "hsetKeyPreVar must be variable");
-        return new StringBuffer(hsetKeyPrefix).append(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1))).append(redisKeySep).append(hsetKeyName).append(redisKeySep).append(hsetKeySuffix).toString();
-    }
-
-    class TimeHelper {
-        private long curMil;
-        private long timeout;
-
-        public TimeHelper(long timeout) {
-            this.timeout = timeout;
-            curMil = System.currentTimeMillis();
-        }
-
-        public boolean checkout() {
-            long cur = System.currentTimeMillis();
-            if (cur > (curMil + timeout)) {
-                curMil = cur;
-                return true;
-            }
-            return false;
-        }
+        return new StringBuffer(hsetKeyPrefix).append(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
     }
 
     @Override
@@ -174,8 +156,8 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         hset = context.getBoolean("hset", false);
         hsetExpire = context.getInteger("hsetExpire", 3600);
         hsetKeyPrefix = context.getString("hsetKeyPrefix");
-        if (StringUtils.isNotEmpty(hsetKeyPrefix) && !hsetKeyPrefix.endsWith(redisKeySep)) {
-            hsetKeyPrefix = hsetKeyPrefix + redisKeySep;
+        if (StringUtils.isNotEmpty(hsetKeyPrefix) && !hsetKeyPrefix.endsWith(RedisSinkConstant.redisKeySep)) {
+            hsetKeyPrefix = hsetKeyPrefix + RedisSinkConstant.redisKeySep;
         }
         hsetKeyPreVar = context.getString("hsetKeyPreVar");
         hsetKeyName = context.getString("hsetKeyName");

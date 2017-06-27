@@ -1,6 +1,7 @@
 package com.pandatv.redis.sink.realtime;
 
 import com.google.common.base.Preconditions;
+import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.sun.org.apache.xerces.internal.impl.dv.util.Base64;
 import org.apache.commons.lang.StringUtils;
 import org.apache.flume.Context;
@@ -57,9 +58,6 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
     private static String saddHashKeyName;
     private static String saddHashKeySuffix;
 
-    //const
-    private static final String redisKeySep = "-";
-
     @Override
     public void configure(Context context) {
         //hincrby
@@ -74,8 +72,8 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
             hincrbyExpire = 0;
         }
         hincrbyKeyPrefix = context.getString("hincrbyKeyPrefix");
-        if (StringUtils.isNotEmpty(hincrbyKeyPrefix) && !hincrbyKeyPrefix.endsWith(redisKeySep))
-            hincrbyKeyPrefix = hincrbyKeyPrefix + redisKeySep;
+        if (StringUtils.isNotEmpty(hincrbyKeyPrefix) && !hincrbyKeyPrefix.endsWith(RedisSinkConstant.redisKeySep))
+            hincrbyKeyPrefix = hincrbyKeyPrefix + RedisSinkConstant.redisKeySep;
         hincrbyKeyPreVar = context.getString("hincrbyKeyPreVar");
         hincrbyKeyName = context.getString("hincrbyKeyName");
         Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeyName), "hincrbyKeyName must ");
@@ -100,8 +98,8 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
             incrExpire = 0;
         }
         incrKeyPrefix = context.getString("incrKeyPrefix");
-        if (StringUtils.isNotEmpty(incrKeyPrefix) && !incrKeyPrefix.endsWith(redisKeySep))
-            incrKeyPrefix = incrKeyPrefix + redisKeySep;
+        if (StringUtils.isNotEmpty(incrKeyPrefix) && !incrKeyPrefix.endsWith(RedisSinkConstant.redisKeySep))
+            incrKeyPrefix = incrKeyPrefix + RedisSinkConstant.redisKeySep;
         incrKeyPreVar = context.getString("incrKeyPreVar");
         incrKeyName = context.getString("incrKeyName");
         Preconditions.checkArgument(StringUtils.isNotEmpty(incrKeyName), "incrKeyName must ");
@@ -125,8 +123,8 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
             saddExpire = 0;
         }
         saddKeyPrefix = context.getString("saddKeyPrefix", "rt_expend");
-        if (StringUtils.isNotEmpty(saddKeyPrefix) && !saddKeyPrefix.endsWith(redisKeySep))
-            saddKeyPrefix = saddKeyPrefix + redisKeySep;
+        if (StringUtils.isNotEmpty(saddKeyPrefix) && !saddKeyPrefix.endsWith(RedisSinkConstant.redisKeySep))
+            saddKeyPrefix = saddKeyPrefix + RedisSinkConstant.redisKeySep;
         saddKeyPreVar = context.getString("saddKeyPreVar");
         saddKeyName = context.getString("saddKeyName");
         saddKeySuffix = context.getString("saddKeySuffix");
@@ -157,7 +155,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         String hincrbyKey = hincrbyKeyPrefix;
         if (StringUtils.isNotEmpty(hincrbyKeyPreVar) && hincrbyKeyPreVar.contains("${")) {
             String keyPreValue = headers.get(hincrbyKeyPreVar.substring(2, hincrbyKeyPreVar.length() - 1));
-            hincrbyKey = hincrbyKey + keyPreValue + redisKeySep;
+            hincrbyKey = hincrbyKey + keyPreValue + RedisSinkConstant.redisKeySep;
         }
         String[] hincrbyKeyNameArr = hincrbyKeyName.split("\\s+");
         String[] hincrbyKeySuffixArr = hincrbyKeySuffix.split("\\s+");
@@ -250,7 +248,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         String saddKey = saddKeyPrefix;
         if (StringUtils.isNotEmpty(saddKeyPreVar) && saddKeyPreVar.contains("${")) {
             String keyPreValue = headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1));
-            saddKey = saddKey + keyPreValue + redisKeySep;
+            saddKey = saddKey + keyPreValue + RedisSinkConstant.redisKeySep;
         }
         String[] saddKeyNameArr = saddKeyName.split("\\s+");
         String[] saddKeySuffixArr = saddKeySuffix.split("\\s+");
@@ -296,7 +294,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         String incrKey = incrKeyPrefix;
         if (StringUtils.isNotEmpty(incrKeyPreVar) && incrKeyPreVar.contains("${")) {
             String keyPreValue = headers.get(incrKeyPreVar.substring(2, incrKeyPreVar.length() - 1));
-            incrKey = incrKey + keyPreValue + redisKeySep;
+            incrKey = incrKey + keyPreValue + RedisSinkConstant.redisKeySep;
         }
         String[] incrKeyNameArr = incrKeyName.split("\\s+");
         String[] incrKeySuffixArr = incrKeySuffix.split("\\s+");
@@ -346,7 +344,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
         if (keySuf.equalsIgnoreCase("none")) {
             keySuf = "";
         } else {
-            keySuf = redisKeySep + keySuf;
+            keySuf = RedisSinkConstant.redisKeySep + keySuf;
         }
         String key = incrKey + keyName + keySuf;
         return key;
