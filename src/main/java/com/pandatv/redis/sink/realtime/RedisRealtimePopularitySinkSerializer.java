@@ -1,7 +1,6 @@
 package com.pandatv.redis.sink.realtime;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Lists;
 import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.pandatv.redis.sink.tools.TimeHelper;
 import org.apache.commons.lang.StringUtils;
@@ -13,7 +12,10 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Created by likaiqing on 2017/6/23.
@@ -21,7 +23,7 @@ import java.util.*;
 public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimePopularitySinkSerializer.class);
     private static Set<String> minuteFields = new HashSet<>();
-    private static Set<String> parDates = new HashSet<>();
+    //    private static Set<String> parDates = new HashSet<>();
     private static TimeHelper timeHelper = null;
 
     private static List<Event> events;
@@ -53,17 +55,15 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
             }
-//            logger.info("actionList,events.size:" + events.size());
+            logger.info("actionList,events.size:" + events.size());
             pipelined.sync();
             pipelined.clear();
-//            logger.info("pipelineExecute over,parDates.size():" + parDates.size() + ";minutes.size():" + minuteFields.size());
             if (hsetCascadHset && timeHelper.checkout()) {
                 for (String field : minuteFields) {
-//                    logger.info("executeCascadHset,field:" + field);
+                    logger.info("executeCascadHset,field:" + field);
                     executeCascadHset(field, jedis);
                 }
                 minuteFields.clear();
-                parDates.clear();
             }
 
         } catch (Exception e) {
@@ -74,35 +74,11 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     }
 
     private void executeCascadHset(String field, Jedis jedis) {
-        if (parDates.size() == 1) {
-//            logger.info("parDates.size==" + parDates.size());
-            String parDate = Lists.newArrayList(parDates).get(0);
-//            logger.info("executeHset,field=" + field + ";parDate:" + parDate);
-            executeHset(field, parDate, jedis);
-        } else if (parDates.size() == 2) {
-//            logger.info("parDates.size==" + parDates.size());
-            ArrayList<String> parDateList = Lists.newArrayList(parDates);
-            String first = parDateList.get(0);
-            String seconde = parDateList.get(1);
-            String little = first.compareTo(seconde) < 0 ? first : seconde;
-            String big = first.compareTo(seconde) > 0 ? first : seconde;
-            if (field.startsWith("0")) {//新的一天,匹配big
-//                logger.info("executeHset,field=" + field + ";parDate:" + big);
-                executeHset(field, big, jedis);
-            } else {//昨天,匹配little
-//                logger.info("executeHset,field=" + field + ";parDate:" + little);
-                executeHset(field, little, jedis);
-            }
-        } else {
-            logger.error("parDates.size<0 or parDates.size>=3");
-        }
-    }
-
-    private void executeHset(String field, String parDate, Jedis jedis) {
+        String parDate = field.substring(0, 8);
         String minuteKey = new StringBuffer(hsetKeyPrefix).append(field).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
         String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(hsetHashKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
         int total = 0;
-//        logger.info("minuteKey:" + minuteKey + ";newKey:" + newKey);
+        logger.info("minuteKey:" + minuteKey + ";newKey:" + newKey);
         for (String value : jedis.hvals(minuteKey)) {
             try {
                 total = total + Integer.parseInt(value);
@@ -110,7 +86,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                 e.printStackTrace();
             }
         }
-//        logger.info("jedis.hset,newKey:" + newKey + ";field:" + field + ";total:" + total);
+        logger.info("jedis.hset,newKey:" + newKey + ";field:" + field + ";total:" + total);
         jedis.hset(newKey, field, total + "");
     }
 
@@ -120,7 +96,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         String field = getField(headers);
         String value = getValue(headers);
         minuteFields.add(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1)));
-        parDates.add(headers.get("par_date"));
+//        parDates.add(headers.get("par_date"));
         pipelined.hset(key, field, value);
         pipelined.expire(key, hsetExpire);
     }
@@ -154,21 +130,30 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     @Override
     public void configure(Context context) {
         hset = context.getBoolean("hset", false);
-        hsetExpire = context.getInteger("hsetExpire", 3600);
+        hsetExpire = context.getInteger("hsetExpire", 300);
         hsetKeyPrefix = context.getString("hsetKeyPrefix");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetKeyPrefix), "hsetKeyPrefix must not empty");
         if (StringUtils.isNotEmpty(hsetKeyPrefix) && !hsetKeyPrefix.endsWith(RedisSinkConstant.redisKeySep)) {
             hsetKeyPrefix = hsetKeyPrefix + RedisSinkConstant.redisKeySep;
         }
         hsetKeyPreVar = context.getString("hsetKeyPreVar");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetKeyPreVar), "hsetKeyPreVar must not empty");
         hsetKeyName = context.getString("hsetKeyName");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetKeyName), "hsetKeyName must not empty");
         hsetKeySuffix = context.getString("hsetKeySuffix");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetKeySuffix), "hsetKeySuffix must not empty");
         hsetField = context.getString("hsetField");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetField), "hsetField must not empty");
         hsetValue = context.getString("hsetValue");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetValue), "hsetValue must not empty");
         hsetCascadHset = context.getBoolean("hsetCascadHset", false);
         Long setCascadHsetTime = context.getLong("setCascadHsetTime", 45000l);
         timeHelper = new TimeHelper(setCascadHsetTime);
         hsetHashKeyName = context.getString("hsetHashKeyName");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetHashKeyName), "hsetHashKeyName must not empty");
         hsetHashKeyPreVar = context.getString("hsetHashKeyPreVar");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(hsetHashKeyPreVar), "hsetHashKeyPreVar must not empty");
+        logger.info("configure load conf sucess");
     }
 
     @Override
