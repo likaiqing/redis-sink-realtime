@@ -67,7 +67,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             logger.info("actionList,events.size:" + events.size());
             pipelined.sync();
             pipelined.clear();
-            if (saddCascadHset && timeHelper.checkout()) {
+            if (saddCascadHset) {
                 logger.info("executeCascadHset,minuteFields.size:" + minuteNameFields.size());
                 for (String field : minuteNameFields) {
                     executeCascadHset(field, jedis);
