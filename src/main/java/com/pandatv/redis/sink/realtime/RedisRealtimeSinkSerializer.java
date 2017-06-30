@@ -379,7 +379,7 @@ public class RedisRealtimeSinkSerializer implements RedisEventSerializer {
                 }
             }
         }
-        return false;
+        return true;
     }
 
     private boolean checkCondition(Map<String, String> headers, String con) {
