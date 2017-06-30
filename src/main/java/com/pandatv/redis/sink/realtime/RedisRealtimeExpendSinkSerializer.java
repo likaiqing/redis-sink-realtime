@@ -83,9 +83,10 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private void executeCascadHset(String field, Jedis jedis) {
         String parDate = field.substring(0, 8);
         String minute = field.substring(0, field.indexOf(RedisSinkConstant.redisKeySep));
-        String name = field.substring(field.indexOf(RedisSinkConstant.redisKeySep) + 1);
-        String minuteNameKey = new StringBuffer(saddKeyPrefix).append(field).append(RedisSinkConstant.redisKeySep).append(saddKeySuffix).toString();
-        String newKey = new StringBuffer(saddKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(saddKeySuffix).toString();
+        String name = field.substring(field.indexOf(RedisSinkConstant.redisKeySep) + 1, field.lastIndexOf(RedisSinkConstant.redisKeySep));
+        String suffix = field.substring(field.lastIndexOf(RedisSinkConstant.redisKeySep) + 1);
+        String minuteNameKey = new StringBuffer(saddKeyPrefix).append(field).toString();
+        String newKey = new StringBuffer(saddKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
         Long uv = jedis.scard(minuteNameKey);
         jedis.hset(newKey, minute, String.valueOf(uv));
     }
@@ -163,11 +164,11 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         String[] saddValueArr = saddValue.split("\\s+");
         Preconditions.checkArgument(saddKeyNameNameArr.length == saddKeySuffixArr.length && saddKeyNameNameArr.length == saddValueArr.length, "must saddKeyNameNameArr.length == saddKeySuffixArr.length && saddKeyNameNameArr.length == saddValueArr.length ");
         for (int i = 0; i < saddKeyNameNameArr.length; i++) {
-            String name = getKeyName(headers, saddKeySuffixArr[i]);
+            String name = getKeyName(headers, saddKeyNameNameArr[i]);
             String suffix = saddKeySuffixArr[i];
             String value = getValue(headers, saddValueArr[i]);
             String key = getSaddKey(headers, name, suffix);
-            minuteNameFields.add(saddKeyPreVar + RedisSinkConstant.redisKeySep + name);
+            minuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
             pipelined.sadd(key, value);
             pipelined.expire(key, saddExpire);
         }
@@ -207,7 +208,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
 
     private String getField(Map<String, String> headers, String field) {
         if (field.contains("${")) {
-            headers.get(field.substring(2, field.length() - 1));
+            return headers.get(field.substring(2, field.length() - 1));
         }
         return field;
     }
