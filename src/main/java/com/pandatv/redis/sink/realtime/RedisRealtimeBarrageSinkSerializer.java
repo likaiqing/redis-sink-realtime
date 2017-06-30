@@ -63,11 +63,9 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
             }
-            logger.info("actionList,events.size:" + events.size());
             pipelined.sync();
             pipelined.clear();
             if (saddCascadHset && timeHelper.checkout()) {
-                logger.info("executeCascadHset,minuteFields.size:" + minuteFields.size());
                 for (String field : minuteFields) {
                     executeCascadHset(field, jedis);
                 }

@@ -55,12 +55,10 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
             }
-            logger.info("actionList,events.size:" + events.size());
             pipelined.sync();
             pipelined.clear();
             if (hsetCascadHset && timeHelper.checkout()) {
                 for (String field : minuteFields) {
-                    logger.info("executeCascadHset,field:" + field);
                     executeCascadHset(field, jedis);
                 }
                 minuteFields.clear();
@@ -78,7 +76,6 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         String minuteKey = new StringBuffer(hsetKeyPrefix).append(field).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
         String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(hsetHashKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
         int total = 0;
-        logger.info("minuteKey:" + minuteKey + ";newKey:" + newKey);
         for (String value : jedis.hvals(minuteKey)) {
             try {
                 total = total + Integer.parseInt(value);
@@ -86,7 +83,6 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                 e.printStackTrace();
             }
         }
-        logger.info("jedis.hset,newKey:" + newKey + ";field:" + field + ";total:" + total);
         jedis.hset(newKey, field, total + "");
     }
 
