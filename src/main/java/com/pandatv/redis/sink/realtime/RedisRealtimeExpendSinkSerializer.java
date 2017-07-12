@@ -185,12 +185,12 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         String[] hincrbyValueArr = hincrbyValue.split("\\s+");
         Preconditions.checkArgument(hincrbyKeyNameArr.length == hincrbyKeySuffixArr.length && hincrbyKeyNameArr.length == hincrbyFieldArr.length && hincrbyKeyNameArr.length == hincrbyValueArr.length, "must hincrbyKeyNameArr.length==hincrbyKeySuffixArr.length&&hincrbyKeyNameArr.length==hincrbyFieldArr.length&&hincrbyKeyNameArr.length==hincrbyValueArr.length ");
         for (int i = 0; i < hincrbyKeyNameArr.length; i++) {
-            String name = getKeyName(headers, hincrbyKeyNameArr[i]);
+            String name = getKeyName(headers, hincrbyKeyNameArr[i].trim());
             String suffix = hincrbyKeySuffixArr[i];
-            String field = getField(headers, hincrbyFieldArr[i]);
+            String field = getField(headers, hincrbyFieldArr[i].trim());
             int value = 1;
             try {
-                value = Integer.parseInt(getValue(headers, hincrbyValueArr[i]));
+                value = Integer.parseInt(getValue(headers, hincrbyValueArr[i].trim()));
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -216,6 +216,8 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private String getKeyName(Map<String, String> headers, String keyName) {
         if (keyName.contains("base64.encode")) {
             return Base64.getEncoder().encodeToString(headers.get(keyName.substring(keyName.indexOf("{") + 1, keyName.length() - 1)).getBytes());
+        } else if (keyName.contains("${")) {
+            return headers.get(keyName.substring(2, keyName.length() - 1));
         }
         return keyName;
     }
