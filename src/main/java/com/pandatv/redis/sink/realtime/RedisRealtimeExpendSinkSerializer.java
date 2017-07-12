@@ -164,9 +164,9 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         String[] saddValueArr = saddValue.split("\\s+");
         Preconditions.checkArgument(saddKeyNameNameArr.length == saddKeySuffixArr.length && saddKeyNameNameArr.length == saddValueArr.length, "must saddKeyNameNameArr.length == saddKeySuffixArr.length && saddKeyNameNameArr.length == saddValueArr.length ");
         for (int i = 0; i < saddKeyNameNameArr.length; i++) {
-            String name = getKeyName(headers, saddKeyNameNameArr[i]);
+            String name = getParamValue(headers, saddKeyNameNameArr[i]);
             String suffix = saddKeySuffixArr[i];
-            String value = getValue(headers, saddValueArr[i]);
+            String value = getParamValue(headers, saddValueArr[i]);
             String key = getSaddKey(headers, name, suffix);
             minuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
             pipelined.sadd(key, value);
@@ -185,12 +185,12 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         String[] hincrbyValueArr = hincrbyValue.split("\\s+");
         Preconditions.checkArgument(hincrbyKeyNameArr.length == hincrbyKeySuffixArr.length && hincrbyKeyNameArr.length == hincrbyFieldArr.length && hincrbyKeyNameArr.length == hincrbyValueArr.length, "must hincrbyKeyNameArr.length==hincrbyKeySuffixArr.length&&hincrbyKeyNameArr.length==hincrbyFieldArr.length&&hincrbyKeyNameArr.length==hincrbyValueArr.length ");
         for (int i = 0; i < hincrbyKeyNameArr.length; i++) {
-            String name = getKeyName(headers, hincrbyKeyNameArr[i].trim());
+            String name = getParamValue(headers, hincrbyKeyNameArr[i].trim());
             String suffix = hincrbyKeySuffixArr[i];
-            String field = getField(headers, hincrbyFieldArr[i].trim());
+            String field = getParamValue(headers, hincrbyFieldArr[i].trim());
             int value = 1;
             try {
-                value = Integer.parseInt(getValue(headers, hincrbyValueArr[i].trim()));
+                value = Integer.parseInt(getParamValue(headers, hincrbyValueArr[i].trim()));
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -199,21 +199,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         }
     }
 
-    private String getValue(Map<String, String> headers, String value) {
-        if (value.contains("${")) {
-            return headers.get(value.substring(2, value.length() - 1));
-        }
-        return value;
-    }
-
-    private String getField(Map<String, String> headers, String field) {
-        if (field.contains("${")) {
-            return headers.get(field.substring(2, field.length() - 1));
-        }
-        return field;
-    }
-
-    private String getKeyName(Map<String, String> headers, String keyName) {
+    private String getParamValue(Map<String, String> headers, String keyName) {
         if (keyName.contains("base64.encode")) {
             return Base64.getEncoder().encodeToString(headers.get(keyName.substring(keyName.indexOf("{") + 1, keyName.length() - 1)).getBytes());
         } else if (keyName.contains("${")) {

@@ -12,10 +12,7 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Created by likaiqing on 2017/6/23.
@@ -99,10 +96,23 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     }
 
     private void executeSadd(Map<String, String> headers, Pipeline pipelined) {
-        String key = getSaddKey(headers);
-        String uid = headers.get(saddValue.substring(2, saddValue.length() - 1));
-        pipelined.sadd(key, uid);
-        pipelined.expire(key, saddExpire);
+        String[] saddKeyNameArr = saddKeyName.split("\\s+");
+        String[] saddKeySuffixArr = saddKeySuffix.split("\\s+");
+        String[] saddValueArr = saddValue.split("\\s+");
+        for (int i = 0; i < saddKeyNameArr.length; i++) {
+            String keyName = getParamValue(headers, saddKeyNameArr[i].trim());
+            String suffix = saddKeySuffixArr[i].trim();
+            String value = getParamValue(headers, saddValueArr[i].trim());
+            String key = getSaddKey(headers, keyName, suffix);
+            pipelined.sadd(key, value);
+            pipelined.expire(key, saddExpire);
+        }
+    }
+
+    private String getSaddKey(Map<String, String> headers, String name, String suffix) {
+        String minute = headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1));
+        minuteFields.add(minute);
+        return new StringBuffer(saddKeyPrefix).append(minute).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
     }
 
     private String getSaddKey(Map<String, String> headers) {
@@ -114,15 +124,36 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     }
 
     private void executeHincrby(Map<String, String> headers, Pipeline pipelined) {
-        String key = getHincrKey(headers);
-        String field = headers.get(hincrbyField.substring(2, hincrbyField.length() - 1));
-        int value = 1;
-        try {
-            value = Integer.parseInt(hincrbyValue);
-        } catch (Exception e) {
-            e.printStackTrace();
+        String[] hincrbyKeyNameArr = hincrbyKeyName.split("\\s+");
+        String[] hincrbyKeySuffixArr = hincrbyKeySuffix.split("\\s+");
+        String[] hincrbyFieldArr = hincrbyField.split("\\s+");
+        String[] hincrbyValueArr = hincrbyValue.split("\\s+");
+        for (int i = 0; i < hincrbyKeyNameArr.length; i++) {
+            String name = getParamValue(headers, hincrbyKeyNameArr[i].trim());
+            String suffix = hincrbyKeySuffixArr[i].trim();
+            String field = getParamValue(headers, hincrbyFieldArr[i].trim());
+            int value = 1;
+            try {
+                value = Integer.parseInt(getParamValue(headers, hincrbyValueArr[i].trim()));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            String key = getHincrKey(headers, name, suffix);
+            pipelined.hincrBy(key, field, value);
         }
-        pipelined.hincrBy(key, field, value);
+    }
+
+    private String getHincrKey(Map<String, String> headers, String name, String suffix) {
+        return new StringBuffer(hincrbyKeyPrefix).append(headers.get(hincrbyKeyPreVar.substring(2, hincrbyKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
+    }
+
+    private String getParamValue(Map<String, String> headers, String name) {
+        if (name.contains("base64.encode")) {
+            return Base64.getEncoder().encodeToString(headers.get(name.substring(name.indexOf("{") + 1, name.length() - 1)).getBytes());
+        } else if (name.contains("${")) {
+            return headers.get(name.substring(2, name.length() - 1));
+        }
+        return name;
     }
 
     private String getHincrKey(Map<String, String> headers) {
