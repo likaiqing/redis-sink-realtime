@@ -23,6 +23,7 @@ import java.util.Set;
 public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimePopularitySinkSerializer.class);
     private static Set<String> minuteFields = new HashSet<>();
+    private static Set<String> minuteRoomIdFields = new HashSet<>();
     //    private static Set<String> parDates = new HashSet<>();
     private static TimeHelper timeHelper = null;
 
@@ -40,6 +41,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     private static boolean hsetCascadHset;
     private static String hsetHashKeyPreVar;
     private static String hsetHashKeyName;
+    private static boolean hsetClassificationCascad;
 
     @Override
     public void initialize(List<Event> events, Jedis jedis) {
@@ -57,18 +59,32 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             }
             pipelined.sync();
             pipelined.clear();
+            if (hsetClassificationCascad) {
+                hsetClassificationCascad(jedis);
+            }
             if (hsetCascadHset && timeHelper.checkout()) {
                 for (String field : minuteFields) {
                     executeCascadHset(field, jedis);
                 }
                 minuteFields.clear();
             }
-
         } catch (Exception e) {
             e.printStackTrace();
             err++;
         }
         return events.size() - err;
+    }
+
+    private void hsetClassificationCascad(Jedis jedis) {
+        StringBuffer sb = new StringBuffer();
+        int i=0;
+        for (String field : minuteRoomIdFields) {
+            if (++i==minuteRoomIdFields.size()-1){
+
+            }
+            sb.append(field).append(",");
+        }
+
     }
 
     private void executeCascadHset(String field, Jedis jedis) {
@@ -92,6 +108,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         String field = getField(headers);
         String value = getValue(headers);
         minuteFields.add(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1)));
+        minuteRoomIdFields.add(new StringBuffer(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(headers.get(hsetField.substring(2, hsetField.length() - 1))).toString());
 //        parDates.add(headers.get("par_date"));
         pipelined.hset(key, field, value);
         pipelined.expire(key, hsetExpire);
@@ -149,6 +166,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         Preconditions.checkArgument(StringUtils.isNotEmpty(hsetHashKeyName), "hsetHashKeyName must not empty");
         hsetHashKeyPreVar = context.getString("hsetHashKeyPreVar");
         Preconditions.checkArgument(StringUtils.isNotEmpty(hsetHashKeyPreVar), "hsetHashKeyPreVar must not empty");
+        hsetClassificationCascad = context.getBoolean("hsetClassificationCascad", false);
         logger.info("configure load conf sucess");
     }
 

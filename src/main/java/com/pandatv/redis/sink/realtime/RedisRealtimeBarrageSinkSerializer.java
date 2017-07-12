@@ -1,6 +1,7 @@
 package com.pandatv.redis.sink.realtime;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
 import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.pandatv.redis.sink.tools.TimeHelper;
 import org.apache.commons.lang.StringUtils;
@@ -19,7 +20,7 @@ import java.util.*;
  */
 public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimeBarrageSinkSerializer.class);
-    private static Set<String> minuteFields = new HashSet<>();
+    private static Set<String> minuteNameFields = new HashSet<>();
 //    private static Set<String> parDates = new HashSet<>();
 
     private static List<Event> events;
@@ -44,6 +45,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private static String saddHashKeyPreVar;
     private static String saddHashKeyName;
     private static TimeHelper timeHelper;
+    private static Map<String, String> platMap;
 
 
     @Override
@@ -63,10 +65,10 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             pipelined.sync();
             pipelined.clear();
             if (saddCascadHset && timeHelper.checkout()) {
-                for (String field : minuteFields) {
+                for (String field : minuteNameFields) {
                     executeCascadHset(field, jedis);
                 }
-                minuteFields.clear();
+                minuteNameFields.clear();
 //                parDates.clear();
             }
         } catch (Exception e) {
@@ -78,10 +80,13 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
     private void executeCascadHset(String field, Jedis jedis) {
         String parDate = field.substring(0, 8);
-        String minuteKey = new StringBuffer(saddKeyPrefix).append(field).append(RedisSinkConstant.redisKeySep).append(saddKeyName).append(RedisSinkConstant.redisKeySep).append(saddKeySuffix).toString();
-        String newKey = new StringBuffer(saddKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(saddHashKeyName).append(RedisSinkConstant.redisKeySep).append(saddKeySuffix).toString();
-        Long uv = jedis.scard(minuteKey);
-        jedis.hset(newKey, field, String.valueOf(uv));
+        String minute = field.substring(0, field.indexOf(RedisSinkConstant.redisKeySep));
+        String name = field.substring(field.indexOf(RedisSinkConstant.redisKeySep) + 1, field.lastIndexOf(RedisSinkConstant.redisKeySep)).replace("-total-","-minute-");//兼容之前的key
+        String suffix = field.substring(field.lastIndexOf(RedisSinkConstant.redisKeySep) + 1);
+        String minuteNameKey = new StringBuffer(saddKeyPrefix).append(field).toString();
+        String newKey = new StringBuffer(saddKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
+        Long uv = jedis.scard(minuteNameKey);
+        jedis.hset(newKey, minute, String.valueOf(uv));
     }
 
 
@@ -104,6 +109,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             String suffix = saddKeySuffixArr[i].trim();
             String value = getParamValue(headers, saddValueArr[i].trim());
             String key = getSaddKey(headers, keyName, suffix);
+            minuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(keyName).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
             pipelined.sadd(key, value);
             pipelined.expire(key, saddExpire);
         }
@@ -111,14 +117,13 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
     private String getSaddKey(Map<String, String> headers, String name, String suffix) {
         String minute = headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1));
-        minuteFields.add(minute);
         return new StringBuffer(saddKeyPrefix).append(minute).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
     }
 
     private String getSaddKey(Map<String, String> headers) {
         String minute = headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1));
         String parDate = headers.get("par_date");
-        minuteFields.add(minute);
+        minuteNameFields.add(minute);
 //        parDates.add(parDate);
         return new StringBuffer(saddKeyPrefix).append(minute).append(RedisSinkConstant.redisKeySep).append(saddKeyName).append(RedisSinkConstant.redisKeySep).append(saddKeySuffix).toString();
     }
@@ -147,13 +152,17 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         return new StringBuffer(hincrbyKeyPrefix).append(headers.get(hincrbyKeyPreVar.substring(2, hincrbyKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
     }
 
-    private String getParamValue(Map<String, String> headers, String name) {
-        if (name.contains("base64.encode")) {
-            return Base64.getEncoder().encodeToString(headers.get(name.substring(name.indexOf("{") + 1, name.length() - 1)).getBytes());
-        } else if (name.contains("${")) {
-            return headers.get(name.substring(2, name.length() - 1));
+    private String getParamValue(Map<String, String> headers, String keyName) {
+        if (keyName.contains(RedisSinkConstant.redisKeySep)) {
+            return Arrays.stream(keyName.split("-")).map(name -> getParamValue(headers, name)).reduce((a, b) -> a + "-" + b).get();
+        } else if (keyName.contains("base64.encode")) {
+            return Base64.getEncoder().encodeToString(headers.get(keyName.substring(keyName.indexOf("{") + 1, keyName.length() - 1)).getBytes());
+        } else if (keyName.contains("${")) {
+            String result = headers.get(keyName.substring(2, keyName.length() - 1));
+            result = platMap.containsKey(result) ? platMap.get(result) : result;
+            return result;
         }
-        return name;
+        return keyName;
     }
 
     private String getHincrKey(Map<String, String> headers) {
@@ -200,6 +209,8 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         saddHashKeyName = context.getString("saddHashKeyName", "minute");
         long saddCascadHsetTime = context.getLong("saddCascadHsetTime", 45000l);
         timeHelper = new TimeHelper(saddCascadHsetTime);
+        String platMapStr = context.getString("platMap", "minute");
+        platMap = Splitter.on(";").omitEmptyStrings().trimResults().withKeyValueSeparator(":").split(platMapStr);
     }
 
     @Override

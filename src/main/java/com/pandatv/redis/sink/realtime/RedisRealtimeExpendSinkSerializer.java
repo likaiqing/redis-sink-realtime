@@ -1,6 +1,7 @@
 package com.pandatv.redis.sink.realtime;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
 import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.pandatv.redis.sink.tools.TimeHelper;
 import org.apache.commons.lang.StringUtils;
@@ -48,6 +49,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static String saddHashKeyPreVar;
     private static String saddHashKeyName;
     private static TimeHelper timeHelper;
+    private static Map<String, String> platMap;
 
 
     @Override
@@ -200,10 +202,14 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     }
 
     private String getParamValue(Map<String, String> headers, String keyName) {
-        if (keyName.contains("base64.encode")) {
+        if (keyName.contains(RedisSinkConstant.redisKeySep)) {
+            return Arrays.stream(keyName.split("-")).map(name -> getParamValue(headers, name)).reduce((a, b) -> a + "-" + b).get();
+        } else if (keyName.contains("base64.encode")) {
             return Base64.getEncoder().encodeToString(headers.get(keyName.substring(keyName.indexOf("{") + 1, keyName.length() - 1)).getBytes());
         } else if (keyName.contains("${")) {
-            return headers.get(keyName.substring(2, keyName.length() - 1));
+            String result = headers.get(keyName.substring(2, keyName.length() - 1));
+            result = platMap.containsKey(result) ? platMap.get(result) : result;
+            return result;
         }
         return keyName;
     }
@@ -254,6 +260,8 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         saddHashKeyName = context.getString("saddHashKeyName", "minute");
         long saddCascadHsetTime = context.getLong("saddCascadHsetTime", 45000l);
         timeHelper = new TimeHelper(saddCascadHsetTime);
+        String platMapStr = context.getString("platMap", "minute");
+        platMap = Splitter.on(";").omitEmptyStrings().trimResults().withKeyValueSeparator(":").split(platMapStr);
     }
 
     @Override
