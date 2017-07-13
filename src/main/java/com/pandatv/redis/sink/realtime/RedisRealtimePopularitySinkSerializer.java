@@ -1,8 +1,10 @@
 package com.pandatv.redis.sink.realtime;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.pandatv.redis.sink.tools.TimeHelper;
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.lang.StringUtils;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -12,10 +14,10 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.sql.*;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.*;
 
 /**
  * Created by likaiqing on 2017/6/23.
@@ -23,7 +25,7 @@ import java.util.Set;
 public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimePopularitySinkSerializer.class);
     private static Set<String> minuteFields = new HashSet<>();
-    private static Set<String> minuteRoomIdFields = new HashSet<>();
+    //    private static Set<String> minuteRoomIdFields = new HashSet<>();
     //    private static Set<String> parDates = new HashSet<>();
     private static TimeHelper timeHelper = null;
 
@@ -42,6 +44,64 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     private static String hsetHashKeyPreVar;
     private static String hsetHashKeyName;
     private static boolean hsetClassificationCascad;
+    private static String mysqlUrl;
+    private static String mysqlUser;
+    private static String mysqlPass;
+
+    private static Map<Integer, String> roomClaMap;
+    private static Connection con = null;
+    private static Statement stmt = null;
+    private static ResultSet rs = null;
+    private static String dbSqlPre = "select id,hostid from room where id in (";
+
+    private static String hsetClassificationKeySuffix;
+    private static String hsetClassificationKeyName;
+
+    private static int curClassiCastMinute;
+    private static SimpleDateFormat minuteFormat = new SimpleDateFormat("yyyyMMddHHmmss");
+
+    private static void initMysqlConn() {
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        try {
+            if (null == con || con.isClosed()) {
+                con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
+                logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
+            }
+            if (null == stmt || stmt.isClosed()) {
+                stmt = con.createStatement();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void setRoomClamap(String dbSql) {
+        try {
+            if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
+                initMysqlConn();
+            }
+            rs = stmt.executeQuery(dbSql);
+            Map<Integer, String> newRoomClaMp = new HashedMap();
+            while (rs.next()) {
+                newRoomClaMp.put(rs.getInt(1), rs.getString(2));
+            }
+            roomClaMap = newRoomClaMp;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (!rs.isClosed() || rs == null) {
+                    rs.close();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
     @Override
     public void initialize(List<Event> events, Jedis jedis) {
@@ -77,13 +137,43 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     private void hsetClassificationCascad(Jedis jedis) {
         StringBuffer sb = new StringBuffer();
-        int i=0;
-        for (String field : minuteRoomIdFields) {
-            if (++i==minuteRoomIdFields.size()-1){
-
+        int curMinute = Integer.parseInt(minuteFormat.format(new Date()));
+        if (curMinute - curClassiCastMinute >= 2) {
+            String tmpHashKey = new StringBuffer(hsetKeyPrefix).append(curClassiCastMinute).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
+            String anchorIds = Joiner.on(",").join(jedis.hkeys(tmpHashKey));
+            if (StringUtils.isNotEmpty(anchorIds)) {
+                Map<String, Integer> classiPcuMap = new HashedMap();
+                setRoomClamap(new StringBuffer(dbSqlPre).append(anchorIds).append(")").toString());
+                for (Map.Entry<String, String> entry : jedis.hgetAll(tmpHashKey).entrySet()) {
+                    String roomId = entry.getKey();
+                    int pcu = 0;
+                    try {
+                        pcu = Integer.parseInt(entry.getValue());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    classiPcuMap.merge(roomClaMap.get(roomId), pcu, (oldV, newV) -> oldV + newV);
+                }
+                Pipeline pipelined = jedis.pipelined();
+                for (Map.Entry<String, Integer> entry : classiPcuMap.entrySet()) {
+                    String newkey = new StringBuffer(hsetKeyPrefix).append(String.valueOf(curClassiCastMinute).substring(0, 8)).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeyName).append(RedisSinkConstant.redisKeySep).append(entry.getKey()).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeySuffix).toString();
+                    pipelined.hset(newkey, String.valueOf(curClassiCastMinute), String.valueOf(entry.getValue()));
+                }
+                pipelined.sync();
+                pipelined.clear();
             }
-            sb.append(field).append(",");
+            curClassiCastMinute++;
         }
+        if (curMinute - curClassiCastMinute >= 2) {
+            hsetClassificationCascad(jedis);
+        }
+
+//        for (String field : minuteRoomIdFields) {
+//            if (++i==minuteRoomIdFields.size()-1){
+//
+//            }
+//            sb.append(field).append(",");
+//        }
 
     }
 
@@ -108,7 +198,6 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         String field = getField(headers);
         String value = getValue(headers);
         minuteFields.add(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1)));
-        minuteRoomIdFields.add(new StringBuffer(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(headers.get(hsetField.substring(2, hsetField.length() - 1))).toString());
 //        parDates.add(headers.get("par_date"));
         pipelined.hset(key, field, value);
         pipelined.expire(key, hsetExpire);
@@ -168,6 +257,13 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         Preconditions.checkArgument(StringUtils.isNotEmpty(hsetHashKeyPreVar), "hsetHashKeyPreVar must not empty");
         hsetClassificationCascad = context.getBoolean("hsetClassificationCascad", false);
         logger.info("configure load conf sucess");
+        mysqlUrl = context.getString("mysqlUrl");
+        mysqlUser = context.getString("mysqlUser");
+        mysqlPass = context.getString("mysqlPass");
+        curClassiCastMinute = Integer.parseInt(minuteFormat.format(new Date()));
+        hsetClassificationKeySuffix = context.getString("hsetClassificationKeySuffix", "classi_pcu");
+        hsetClassificationKeyName = context.getString("hsetClassificationKeyName", "minute");
+        initMysqlConn();
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.pandatv.redis.sink.tools.TimeHelper;
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.lang.StringUtils;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -13,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
 
+import java.sql.*;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -50,7 +52,59 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static String saddHashKeyName;
     private static TimeHelper timeHelper;
     private static Map<String, String> platMap;
+    private static String mysqlUrl;
+    private static String mysqlUser;
+    private static String mysqlPass;
 
+    private static Map<Integer, String> roomClaMap;
+    private static Connection con = null;
+    private static Statement stmt = null;
+    private static ResultSet rs = null;
+    //消费日志中是主播的qid,非房间号
+    private static String dbSqlPre = "select hostid,classification from room where hostid in (";
+
+    private static void initMysqlConn() {
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        try {
+            if (null == con || con.isClosed()) {
+                con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
+                logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
+            }
+            if (null == stmt || stmt.isClosed()) {
+                stmt = con.createStatement();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void setRoomClamap(String dbSql) {
+        try {
+            if (con.isClosed() || con==null || stmt.isClosed() || stmt==null){
+                initMysqlConn();
+            }
+            rs = stmt.executeQuery(dbSql);
+            Map<Integer,String> newRoomClaMp = new HashedMap();
+            while (rs.next()) {
+                newRoomClaMp.put(rs.getInt(1), rs.getString(2));
+            }
+            roomClaMap = newRoomClaMp;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }finally {
+            try {
+                if (!rs.isClosed()||rs==null){
+                    rs.close();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
     @Override
     public void initialize(List<Event> events, Jedis jedis) {
@@ -262,10 +316,16 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         timeHelper = new TimeHelper(saddCascadHsetTime);
         String platMapStr = context.getString("platMap", "minute");
         platMap = Splitter.on(";").omitEmptyStrings().trimResults().withKeyValueSeparator(":").split(platMapStr);
+        mysqlUrl = context.getString("mysqlUrl");
+        mysqlUser = context.getString("mysqlUser");
+        mysqlPass = context.getString("mysqlPass");
+
+        initMysqlConn();
     }
 
     @Override
     public void configure(ComponentConfiguration conf) {
 
     }
+
 }
