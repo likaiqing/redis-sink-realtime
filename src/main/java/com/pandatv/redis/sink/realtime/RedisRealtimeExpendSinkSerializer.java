@@ -28,8 +28,8 @@ import java.util.stream.Collectors;
 public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimeExpendSinkSerializer.class);
     private static Set<String> saddMinuteNameFields = new HashSet<>();
-    private static Set<String> hincrMinuteNameFields = new HashSet<>();
-
+    //    private static Set<String> hincrMinuteNameFields = new HashSet<>();
+    private static HashMultimap<String, Integer> hincrMinuteNameMap = HashMultimap.create();
     private static List<Event> events;
     private static Jedis jedis;
 
@@ -141,7 +141,11 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 saddMinuteNameFields.clear();
             }
             if (hincrbyClassificationCascad) {
-                hincrbyClassificationCascad(hincrMinuteNameFields, jedis);
+                if (hincrMinuteNameMap.size() > 0) {
+                    hincrbyClassificationCascad(jedis);
+//                    hincrMinuteNameFields.clear();
+                    hincrMinuteNameMap.clear();
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -150,7 +154,8 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         return events.size() - err;
     }
 
-    private void hincrbyClassificationCascad(Set<String> fields, Jedis jedis) {
+    private void hincrbyClassificationCascad(Jedis jedis) {
+        Set<String> fields = hincrMinuteNameMap.keySet();
         Set<String> anchorIds = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
         setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
         HashMultimap<String, String> hMap = HashMultimap.create();
@@ -158,16 +163,22 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
             hMap.put(field.replace(anchorId, roomClaMap.get(anchorId)), field);
         }
+        Pipeline pipelined = jedis.pipelined();
         for (String key : hMap.keySet()) {
             Set<String> fieldValues = hMap.get(key);
-            String[] mgetKey = new String[fieldValues.size()];
-            fieldValues.toArray(mgetKey);
-            String newValue = jedis.mget(mgetKey).stream().reduce((a, b) -> String.valueOf(Integer.parseInt(a) + Integer.parseInt(b))).get();
+            Integer value = fieldValues.stream().map(f -> hincrMinuteNameMap.get(f).stream().reduce((a, b) -> a + b).get()).reduce((a, b) -> a + b).get();
             String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
             String newKey = getClassiKey(hincrbyKeyPrefix, key);
-            jedis.hset(newKey, minute, newValue);
+            pipelined.hincrBy(newKey, minute, value);
+//            String[] mgetKey = new String[fieldValues.size()];
+//            fieldValues.toArray(mgetKey);
+//            //TODO newValue值错误,通过map记录field的值
+//            String newValue = jedis.mget(mgetKey).stream().reduce((a, b) -> String.valueOf(Integer.parseInt(a) + Integer.parseInt(b))).get();
+//            String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
+//            String newKey = getClassiKey(hincrbyKeyPrefix, key);
+//            jedis.hset(newKey, minute, newValue);
         }
-
+        pipelined.clear();
 
     }
 
@@ -312,7 +323,8 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 e.printStackTrace();
             }
             if (suffix.contains("anchor")) {
-                hincrMinuteNameFields.add(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
+                hincrMinuteNameMap.put(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString(), value);
+//                hincrMinuteNameFields.add(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
             }
             String hincrKey = getHincrKey(headers, name, suffix);
             pipelined.hincrBy(hincrKey, field, value);

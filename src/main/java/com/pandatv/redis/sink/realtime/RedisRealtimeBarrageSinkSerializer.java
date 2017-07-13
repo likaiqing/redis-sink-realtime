@@ -1,7 +1,9 @@
 package com.pandatv.redis.sink.realtime;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
+import com.google.common.collect.HashMultimap;
 import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.pandatv.redis.sink.tools.TimeHelper;
 import org.apache.commons.collections.map.HashedMap;
@@ -16,14 +18,14 @@ import redis.clients.jedis.Pipeline;
 
 import java.sql.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Created by likaiqing on 2017/6/23.
  */
 public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimeBarrageSinkSerializer.class);
-    private static Set<String> minuteNameFields = new HashSet<>();
-//    private static Set<String> parDates = new HashSet<>();
+    private static Set<String> saddMinuteNameFields = new HashSet<>();
 
     private static List<Event> events;
     private static Jedis jedis;
@@ -56,7 +58,10 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private static Connection con = null;
     private static Statement stmt = null;
     private static ResultSet rs = null;
-    private static String dbSqlPre = "select id,hostid from room where id in (";
+    private static String dbSqlPre = "select hostid,classification from room where id in (";
+
+    private static boolean saddClassificationCascad = false;
+    private static boolean hincrbyClassificationCascad = false;
 
     private static void initMysqlConn() {
         try {
@@ -119,17 +124,45 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             pipelined.sync();
             pipelined.clear();
             if (saddCascadHset && timeHelper.checkout()) {
-                for (String field : minuteNameFields) {
+                for (String field : saddMinuteNameFields) {
                     executeCascadHset(field, jedis);
                 }
-                minuteNameFields.clear();
-//                parDates.clear();
+                if (saddClassificationCascad) {
+                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
+                    if (null != fields && fields.size() > 0) {
+                        saddClassificationCascad(fields, jedis);
+                    }
+                }
+                saddMinuteNameFields.clear();
+            }
+            if (hincrbyClassificationCascad) {
+                //TODO
+//                if(hincrMinuteNameFields.size()>0){
+//                    hincrbyClassificationCascad(hincrMinuteNameFields, jedis);
+//                    hincrMinuteNameFields.clear();
+//                }
             }
         } catch (Exception e) {
             e.printStackTrace();
             err++;
         }
         return events.size() - err;
+    }
+
+    private void saddClassificationCascad(Set<String> fields, Jedis jedis) {
+        //TODO
+        Set<String> anchorIds = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
+        setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
+        HashMultimap<String,String> hMap = HashMultimap.create();
+        for (String field : fields) {
+            String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
+            hMap.put(field.replace(anchorId,roomClaMap.get(anchorId)),field);
+        }
+        for (String key : hMap.keySet()) {
+
+        }
+
+
     }
 
     private void executeCascadHset(String field, Jedis jedis) {
@@ -163,7 +196,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             String suffix = saddKeySuffixArr[i].trim();
             String value = getParamValue(headers, saddValueArr[i].trim());
             String key = getSaddKey(headers, keyName, suffix);
-            minuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(keyName).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
+            saddMinuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(keyName).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
             pipelined.sadd(key, value);
             pipelined.expire(key, saddExpire);
         }
@@ -177,7 +210,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private String getSaddKey(Map<String, String> headers) {
         String minute = headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1));
         String parDate = headers.get("par_date");
-        minuteNameFields.add(minute);
+        saddMinuteNameFields.add(minute);
 //        parDates.add(parDate);
         return new StringBuffer(saddKeyPrefix).append(minute).append(RedisSinkConstant.redisKeySep).append(saddKeyName).append(RedisSinkConstant.redisKeySep).append(saddKeySuffix).toString();
     }
@@ -270,6 +303,9 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         mysqlPass = context.getString("mysqlPass");
 
         initMysqlConn();
+
+        saddClassificationCascad = context.getBoolean("saddClassificationCascad", false);
+        hincrbyClassificationCascad = context.getBoolean("hincrbyClassificationCascad", false);
     }
 
     @Override
