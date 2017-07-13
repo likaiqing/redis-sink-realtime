@@ -124,7 +124,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             }
             if (hsetCascadHset && timeHelper.checkout()) {
                 for (String field : minuteFields) {
-                    executeCascadHset(field, jedis);
+                    executeCascadHset(field);
                 }
                 minuteFields.clear();
             }
@@ -177,7 +177,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     }
 
-    private void executeCascadHset(String field, Jedis jedis) {
+    private void executeCascadHset(String field) {
         String parDate = field.substring(0, 8);
         String minuteKey = new StringBuffer(hsetKeyPrefix).append(field).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
         String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(hsetHashKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();

@@ -33,6 +33,8 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static List<Event> events;
     private static Jedis jedis;
 
+    private static String keySep = "|";
+
     private static String condition = null;
 
     private static boolean hincrby = false;
@@ -135,14 +137,14 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 if (saddClassificationCascad) {
                     Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
                     if (null != fields && fields.size() > 0) {
-                        saddClassificationCascad(fields, jedis);
+                        saddClassificationCascad(fields);
                     }
                 }
                 saddMinuteNameFields.clear();
             }
             if (hincrbyClassificationCascad) {
                 if (hincrMinuteNameMap.size() > 0) {
-                    hincrbyClassificationCascad(jedis);
+                    hincrbyClassificationCascad();
 //                    hincrMinuteNameFields.clear();
                     hincrMinuteNameMap.clear();
                 }
@@ -154,7 +156,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         return events.size() - err;
     }
 
-    private void hincrbyClassificationCascad(Jedis jedis) {
+    private void hincrbyClassificationCascad() {
         Set<String> fields = hincrMinuteNameMap.keySet();
         Set<String> anchorIds = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
         setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
@@ -189,7 +191,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         return new StringBuffer(prefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(name).append(suffix.replace("anchor", "classi")).toString();
     }
 
-    private void saddClassificationCascad(Set<String> fields, Jedis jedis) {
+    private void saddClassificationCascad(Set<String> fields) {
         Set<String> anchorIds = fields.stream().filter(f -> f.contains("anchor_uv")).map(field -> field.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
         setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
         HashMultimap<String, String> hMap = HashMultimap.create();
@@ -197,6 +199,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
             hMap.put(field.replace(anchorId, roomClaMap.get(anchorId)), field);
         }
+        Map<String, String> keyValueMap = new HashedMap();
         for (String key : hMap.keySet()) {
             Set<String> fieldValues = hMap.get(key);
             String[] unionKeys = new String[fieldValues.size()];
@@ -204,8 +207,19 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             int newUv = jedis.sunion(unionKeys).size();
             String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
             String newKey = getClassiKey(saddKeyPrefix, key);
-            jedis.hset(newKey, minute, String.valueOf(newUv));
+            keyValueMap.put(new StringBuffer(newKey).append(keySep).append(minute).toString(), String.valueOf(newUv));
         }
+        Pipeline pipelined = jedis.pipelined();
+        for (Map.Entry<String, String> entry : keyValueMap.entrySet()) {
+            String[] split = entry.getKey().split(keySep);
+            if (split.length == 2) {
+                jedis.hset(split[0], split[1], String.valueOf(entry.getValue()));
+            } else {
+                logger.error("entry.getKey().split(keySep).length!=2,engtry.getKey:{}", entry.getKey());
+            }
+
+        }
+        pipelined.clear();
     }
 
     private void executeCascadHset(String field, Jedis jedis) {
