@@ -1,7 +1,9 @@
 package com.pandatv.redis.sink.realtime;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
+import com.google.common.collect.HashMultimap;
 import com.pandatv.redis.sink.constant.RedisSinkConstant;
 import com.pandatv.redis.sink.tools.TimeHelper;
 import org.apache.commons.collections.map.HashedMap;
@@ -18,14 +20,15 @@ import java.sql.*;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Created by likaiqing on 2017/6/23.
  */
 public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static final Logger logger = LoggerFactory.getLogger(RedisRealtimeExpendSinkSerializer.class);
-    private static Set<String> minuteNameFields = new HashSet<>();
-//    private static Set<String> parDates = new HashSet<>();
+    private static Set<String> saddMinuteNameFields = new HashSet<>();
+    private static Set<String> hincrMinuteNameFields = new HashSet<>();
 
     private static List<Event> events;
     private static Jedis jedis;
@@ -63,6 +66,9 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     //消费日志中是主播的qid,非房间号
     private static String dbSqlPre = "select hostid,classification from room where hostid in (";
 
+    private static boolean saddClassificationCascad = false;
+    private static boolean hincrbyClassificationCascad = false;
+
     private static void initMysqlConn() {
         try {
             Class.forName("com.mysql.jdbc.Driver");
@@ -84,20 +90,20 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
 
     public static void setRoomClamap(String dbSql) {
         try {
-            if (con.isClosed() || con==null || stmt.isClosed() || stmt==null){
+            if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
                 initMysqlConn();
             }
             rs = stmt.executeQuery(dbSql);
-            Map<Integer,String> newRoomClaMp = new HashedMap();
+            Map<Integer, String> newRoomClaMp = new HashedMap();
             while (rs.next()) {
                 newRoomClaMp.put(rs.getInt(1), rs.getString(2));
             }
             roomClaMap = newRoomClaMp;
         } catch (SQLException e) {
             e.printStackTrace();
-        }finally {
+        } finally {
             try {
-                if (!rs.isClosed()||rs==null){
+                if (!rs.isClosed() || rs == null) {
                     rs.close();
                 }
             } catch (SQLException e) {
@@ -123,17 +129,72 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             pipelined.sync();
             pipelined.clear();
             if (saddCascadHset) {
-                for (String field : minuteNameFields) {
+                for (String field : saddMinuteNameFields) {
                     executeCascadHset(field, jedis);
                 }
-                minuteNameFields.clear();
-//                parDates.clear();
+                if (saddClassificationCascad) {
+                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
+                    if (null != fields && fields.size() > 0) {
+                        saddClassificationCascad(fields, jedis);
+                    }
+                }
+                saddMinuteNameFields.clear();
+            }
+            if (hincrbyClassificationCascad) {
+                hincrbyClassificationCascad(hincrMinuteNameFields, jedis);
             }
         } catch (Exception e) {
             e.printStackTrace();
             err++;
         }
         return events.size() - err;
+    }
+
+    private void hincrbyClassificationCascad(Set<String> fields, Jedis jedis) {
+        Set<String> anchorIds = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
+        setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
+        HashMultimap<String, String> hMap = HashMultimap.create();
+        for (String field : fields) {
+            String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
+            hMap.put(field.replace(anchorId, roomClaMap.get(anchorId)), field);
+        }
+        for (String key : hMap.keySet()) {
+            Set<String> fieldValues = hMap.get(key);
+            String[] mgetKey = new String[fieldValues.size()];
+            fieldValues.toArray(mgetKey);
+            String newValue = jedis.mget(mgetKey).stream().reduce((a, b) -> String.valueOf(Integer.parseInt(a) + Integer.parseInt(b))).get();
+            String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
+            String newKey = getClassiKey(hincrbyKeyPrefix, key);
+            jedis.hset(newKey, minute, newValue);
+        }
+
+
+    }
+
+    private String getClassiKey(String prefix, String key) {
+        String parDate = key.substring(0, 8);
+        String name = key.substring(key.indexOf(RedisSinkConstant.redisKeySep) + 1, key.lastIndexOf(RedisSinkConstant.redisKeySep));
+        String suffix = key.substring(key.lastIndexOf(RedisSinkConstant.redisKeySep) + 1);
+        return new StringBuffer(prefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(name).append(suffix.replace("anchor", "classi")).toString();
+    }
+
+    private void saddClassificationCascad(Set<String> fields, Jedis jedis) {
+        Set<String> anchorIds = fields.stream().filter(f -> f.contains("anchor_uv")).map(field -> field.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
+        setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
+        HashMultimap<String, String> hMap = HashMultimap.create();
+        for (String field : fields) {
+            String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
+            hMap.put(field.replace(anchorId, roomClaMap.get(anchorId)), field);
+        }
+        for (String key : hMap.keySet()) {
+            Set<String> fieldValues = hMap.get(key);
+            String[] unionKeys = new String[fieldValues.size()];
+            fieldValues.toArray(unionKeys);
+            int newUv = jedis.sunion(unionKeys).size();
+            String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
+            String newKey = getClassiKey(saddKeyPrefix, key);
+            jedis.hset(newKey, minute, String.valueOf(newUv));
+        }
     }
 
     private void executeCascadHset(String field, Jedis jedis) {
@@ -224,7 +285,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             String suffix = saddKeySuffixArr[i];
             String value = getParamValue(headers, saddValueArr[i]);
             String key = getSaddKey(headers, name, suffix);
-            minuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
+            saddMinuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
             pipelined.sadd(key, value);
             pipelined.expire(key, saddExpire);
         }
@@ -249,6 +310,9 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 value = Integer.parseInt(getParamValue(headers, hincrbyValueArr[i].trim()));
             } catch (Exception e) {
                 e.printStackTrace();
+            }
+            if (suffix.contains("anchor")) {
+                hincrMinuteNameFields.add(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
             }
             String hincrKey = getHincrKey(headers, name, suffix);
             pipelined.hincrBy(hincrKey, field, value);
@@ -321,6 +385,9 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         mysqlPass = context.getString("mysqlPass");
 
         initMysqlConn();
+
+        saddClassificationCascad = context.getBoolean("saddClassificationCascad", false);
+        hincrbyClassificationCascad = context.getBoolean("hincrbyClassificationCascad", false);
     }
 
     @Override
