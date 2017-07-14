@@ -135,9 +135,9 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                     executeCascadHset(field, jedis);
                 }
                 if (saddClassificationCascad) {
-                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
-                    if (null != fields && fields.size() > 0) {
-                        saddClassificationCascad(fields);
+//                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
+                    if (null != saddMinuteNameFields && saddMinuteNameFields.size() > 0) {
+                        saddClassificationCascad(saddMinuteNameFields);
                     }
                 }
                 saddMinuteNameFields.clear();
@@ -192,34 +192,75 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     }
 
     private void saddClassificationCascad(Set<String> fields) {
-        Set<String> anchorIds = fields.stream().filter(f -> f.contains("anchor_uv")).map(field -> field.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
+        Set<String> minutes = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[0]).collect(Collectors.toSet());
+        Set<String> keys = new HashSet<>();
+        HashMultimap<String, String> minuteKeyMap = HashMultimap.create();
+        for (String minute : minutes) {
+            Set<String> minuteKeySet = jedis.keys(new StringBuffer(saddKeyPrefix).append(minute).append(RedisSinkConstant.redisKeySep).append("*").append("anchor*uv").toString());
+            minuteKeyMap.putAll(minute, minuteKeySet);
+            keys.addAll(minuteKeySet);
+        }
+        Set<String> anchorIds = keys.stream().map(k -> k.split(RedisSinkConstant.redisKeySep)[2]).collect(Collectors.toSet());
         setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
-        HashMultimap<String, String> hMap = HashMultimap.create();
-        for (String field : fields) {
-            String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
-            hMap.put(field.replace(anchorId, roomClaMap.get(anchorId)), field);
+        HashMultimap<String, String> minuteClassiPrefixKeyMap = HashMultimap.create();
+        for (Map.Entry<String, String> entry : minuteKeyMap.entries()) {
+            String minte = entry.getKey();
+            String redisKey = entry.getValue();
+            String anchorId = redisKey.split(RedisSinkConstant.redisKeySep)[2];
+            String suffix = redisKey.substring(redisKey.lastIndexOf(RedisSinkConstant.redisKeySep) + 1);
+            minuteClassiPrefixKeyMap.put(new StringBuffer(minte).append(RedisSinkConstant.redisKeySep).append(roomClaMap.get(Integer.parseInt(anchorId))).append(RedisSinkConstant.redisKeySep).append(suffix).toString(), redisKey);
         }
         Map<String, String> keyValueMap = new HashedMap();
-        for (String key : hMap.keySet()) {
-            Set<String> fieldValues = hMap.get(key);
+        for (String key : minuteClassiPrefixKeyMap.keySet()) {
+            Set<String> fieldValues = minuteClassiPrefixKeyMap.get(key);
             String[] unionKeys = new String[fieldValues.size()];
             fieldValues.toArray(unionKeys);
             int newUv = jedis.sunion(unionKeys).size();
-            String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
-            String newKey = getClassiKey(saddKeyPrefix, key);
-            keyValueMap.put(new StringBuffer(newKey).append(keySep).append(minute).toString(), String.valueOf(newUv));
+            String newKey = new StringBuffer(saddKeyPrefix).append(key.substring(0, 8)).append(RedisSinkConstant.redisKeySep).append(key.split(RedisSinkConstant.redisKeySep)[1]).append(RedisSinkConstant.redisKeySep).append(key.split(RedisSinkConstant.redisKeySep)[2].replace("anchor", "classi")).toString();
+            keyValueMap.put(new StringBuffer(newKey).append(keySep).append(key.split(RedisSinkConstant.redisKeySep)[0]).toString(), String.valueOf(newUv));
         }
         Pipeline pipelined = jedis.pipelined();
         for (Map.Entry<String, String> entry : keyValueMap.entrySet()) {
             String[] split = entry.getKey().split(keySep);
             if (split.length == 2) {
-                jedis.hset(split[0], split[1], String.valueOf(entry.getValue()));
+                pipelined.hset(split[0], split[1], String.valueOf(entry.getValue()));
             } else {
                 logger.error("entry.getKey().split(keySep).length!=2,engtry.getKey:{}", entry.getKey());
             }
 
         }
         pipelined.clear();
+
+
+
+//        Set<String> anchorIds = fields.stream().filter(f -> f.contains("anchor_uv")).map(field -> field.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
+//        setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
+//        HashMultimap<String, String> hMap = HashMultimap.create();
+//        for (String field : fields) {
+//            String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
+//            hMap.put(field.replace(anchorId, roomClaMap.get(Integer.parseInt(anchorId))), field);
+//        }
+//        Map<String, String> keyValueMap = new HashedMap();
+//        for (String key : hMap.keySet()) {
+//            Set<String> fieldValues = hMap.get(key);
+//            String[] unionKeys = new String[fieldValues.size()];
+//            fieldValues.toArray(unionKeys);
+//            int newUv = jedis.sunion(unionKeys).size();
+//            String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
+//            String newKey = getClassiKey(saddKeyPrefix, key);
+//            keyValueMap.put(new StringBuffer(newKey).append(keySep).append(minute).toString(), String.valueOf(newUv));
+//        }
+//        Pipeline pipelined = jedis.pipelined();
+//        for (Map.Entry<String, String> entry : keyValueMap.entrySet()) {
+//            String[] split = entry.getKey().split(keySep);
+//            if (split.length == 2) {
+//                jedis.hset(split[0], split[1], String.valueOf(entry.getValue()));
+//            } else {
+//                logger.error("entry.getKey().split(keySep).length!=2,engtry.getKey:{}", entry.getKey());
+//            }
+//
+//        }
+//        pipelined.clear();
     }
 
     private void executeCascadHset(String field, Jedis jedis) {

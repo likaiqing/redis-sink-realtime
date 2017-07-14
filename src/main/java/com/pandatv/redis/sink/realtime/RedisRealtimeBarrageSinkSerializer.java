@@ -87,20 +87,20 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
     public static void setRoomClamap(String dbSql) {
         try {
-            if (con.isClosed() || con==null || stmt.isClosed() || stmt==null){
+            if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
                 initMysqlConn();
             }
             rs = stmt.executeQuery(dbSql);
-            Map<Integer,String> newRoomClaMp = new HashedMap();
+            Map<Integer, String> newRoomClaMp = new HashedMap();
             while (rs.next()) {
                 newRoomClaMp.put(rs.getInt(1), rs.getString(2));
             }
             roomClaMap = newRoomClaMp;
         } catch (SQLException e) {
             e.printStackTrace();
-        }finally {
+        } finally {
             try {
-                if (!rs.isClosed()||rs==null){
+                if (!rs.isClosed() || rs == null) {
                     rs.close();
                 }
             } catch (SQLException e) {
@@ -131,15 +131,15 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
                     executeCascadHset(field, jedis);
                 }
                 if (saddClassificationCascad) {
-                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
-                    if (null != fields && fields.size() > 0) {
-                        saddClassificationCascad(fields);
+//                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
+                    if (null != saddMinuteNameFields && saddMinuteNameFields.size() > 0) {
+                        saddClassificationCascad(saddMinuteNameFields);
                     }
                 }
                 saddMinuteNameFields.clear();
             }
             if (hincrbyClassificationCascad) {
-                if(hincrMinuteNameMap.size()>0){
+                if (hincrMinuteNameMap.size() > 0) {
                     hincrbyClassificationCascad();
                     hincrMinuteNameMap.clear();
                 }
@@ -172,35 +172,75 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     }
 
     private void saddClassificationCascad(Set<String> fields) {
-        Set<String> anchorIds = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
+        Set<String> minutes = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[0]).collect(Collectors.toSet());
+        Set<String> keys = new HashSet<>();
+        HashMultimap<String, String> minuteKeyMap = HashMultimap.create();
+        for (String minute : minutes) {
+            Set<String> minuteKeySet = jedis.keys(new StringBuffer(saddKeyPrefix).append(minute).append(RedisSinkConstant.redisKeySep).append("*").append("anchor_uv").toString());
+            minuteKeyMap.putAll(minute, minuteKeySet);
+            keys.addAll(minuteKeySet);
+        }
+        String[] keyArr = new String[keys.size()];
+        Set<String> anchorIds = jedis.sunion(keys.toArray(keyArr));
         setRoomClamap(new StringBuffer(dbSqlPre).append(Joiner.on(",").join(anchorIds)).append(")").toString());
-        HashMultimap<String,String> hMap = HashMultimap.create();
-        for (String field : fields) {
-            String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
-            hMap.put(field.replace(anchorId,roomClaMap.get(anchorId)),field);
+        HashMultimap<String, String> minuteClassiKeyMap = HashMultimap.create();
+        for (Map.Entry<String, String> entry : minuteKeyMap.entries()) {
+            String minute = entry.getKey();
+            String redisKey = entry.getValue();
+            String anchorId = redisKey.split(RedisSinkConstant.redisKeySep)[2];
+            minuteClassiKeyMap.put(new StringBuffer(minute).append(RedisSinkConstant.redisKeySep).append(roomClaMap.get(Integer.parseInt(anchorId))).toString(),redisKey);
         }
         Map<String, String> keyValueMap = new HashedMap();
-        for (String key : hMap.keySet()) {
-            Set<String> fieldValues = hMap.get(key);
+        for (String key : minuteClassiKeyMap.keySet()) {
+            Set<String> fieldValues = minuteClassiKeyMap.get(key);
             String[] unionKeys = new String[fieldValues.size()];
             fieldValues.toArray(unionKeys);
             int newUv = jedis.sunion(unionKeys).size();
-            String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
-            String newKey = getClassiKey(saddKeyPrefix, key);
-            keyValueMap.put(new StringBuffer(newKey).append(keySep).append(minute).toString(), String.valueOf(newUv));
+            String newKey = new StringBuffer(saddKeyPrefix).append(key.substring(0,8)).append(RedisSinkConstant.redisKeySep).append(key.split(RedisSinkConstant.redisKeySep)[1]).append(RedisSinkConstant.redisKeySep).append("classi_uv").toString();
+            keyValueMap.put(new StringBuffer(newKey).append(keySep).append(key.split(RedisSinkConstant.redisKeySep)[0]).toString(),String.valueOf(newUv));
         }
         Pipeline pipelined = jedis.pipelined();
         for (Map.Entry<String, String> entry : keyValueMap.entrySet()) {
             String[] split = entry.getKey().split(keySep);
             if (split.length == 2) {
-                jedis.hset(split[0], split[1], String.valueOf(entry.getValue()));
+                pipelined.hset(split[0], split[1], String.valueOf(entry.getValue()));
             } else {
                 logger.error("entry.getKey().split(keySep).length!=2,engtry.getKey:{}", entry.getKey());
             }
 
         }
         pipelined.clear();
+
+//        Set<String> anchorIds = fields.stream().map(f -> f.split(RedisSinkConstant.redisKeySep)[1]).collect(Collectors.toSet());
+
+//        HashMultimap<String, String> hMap = HashMultimap.create();
+//        for (String field : fields) {
+//            String anchorId = field.split(RedisSinkConstant.redisKeySep)[1];
+//            hMap.put(field.replace(anchorId, roomClaMap.get(Integer.parseInt(anchorId))), field);
+//        }
+//        Map<String, String> keyValueMap = new HashedMap();
+//        for (String key : hMap.keySet()) {
+//            Set<String> fieldValues = hMap.get(key);
+//            String[] unionKeys = new String[fieldValues.size()];
+//            fieldValues.toArray(unionKeys);
+//            int newUv = jedis.sunion(unionKeys).size();
+//            String minute = key.substring(0, key.indexOf(RedisSinkConstant.redisKeySep));
+//            String newKey = getClassiKey(saddKeyPrefix, key);
+//            keyValueMap.put(new StringBuffer(newKey).append(keySep).append(minute).toString(), String.valueOf(newUv));
+//        }
+//        Pipeline pipelined = jedis.pipelined();
+//        for (Map.Entry<String, String> entry : keyValueMap.entrySet()) {
+//            String[] split = entry.getKey().split(keySep);
+//            if (split.length == 2) {
+//                pipelined.hset(split[0], split[1], String.valueOf(entry.getValue()));
+//            } else {
+//                logger.error("entry.getKey().split(keySep).length!=2,engtry.getKey:{}", entry.getKey());
+//            }
+//
+//        }
+//        pipelined.clear();
     }
+
     private String getClassiKey(String prefix, String key) {
         String parDate = key.substring(0, 8);
         String name = key.substring(key.indexOf(RedisSinkConstant.redisKeySep) + 1, key.lastIndexOf(RedisSinkConstant.redisKeySep));
@@ -211,7 +251,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private void executeCascadHset(String field, Jedis jedis) {
         String parDate = field.substring(0, 8);
         String minute = field.substring(0, field.indexOf(RedisSinkConstant.redisKeySep));
-        String name = field.substring(field.indexOf(RedisSinkConstant.redisKeySep) + 1, field.lastIndexOf(RedisSinkConstant.redisKeySep)).replace("-total-","-minute-");//兼容之前的key
+        String name = field.substring(field.indexOf(RedisSinkConstant.redisKeySep) + 1, field.lastIndexOf(RedisSinkConstant.redisKeySep)).replace("-total-", "-minute-");//兼容之前的key
         String suffix = field.substring(field.lastIndexOf(RedisSinkConstant.redisKeySep) + 1);
         String minuteNameKey = new StringBuffer(saddKeyPrefix).append(field).toString();
         String newKey = new StringBuffer(saddKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
