@@ -1,1 +1,2 @@
 1,flume更好guava包为18版本
+2,flume-env.sh设置jdk版本为1.8
