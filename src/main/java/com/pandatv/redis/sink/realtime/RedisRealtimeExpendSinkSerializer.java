@@ -33,7 +33,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static List<Event> events;
     private static Jedis jedis;
 
-    private static String keySep = "|";
+    private static String keySep = ":";
 
     private static String condition = null;
 
@@ -229,6 +229,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             }
 
         }
+        pipelined.sync();
         pipelined.clear();
 
 
