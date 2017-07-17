@@ -83,15 +83,7 @@ public class RedisSink extends AbstractSink implements Configurable {
         Channel channel = getChannel();
         Transaction transaction = null;
         Event event = null;
-        Jedis jedis = null;
-        try {
-            jedis = redisConnect.getRedis(pwd);
-        }catch (Exception e){
-            redisConnect.close();
-            e.printStackTrace();
-            redisConnect = new RedisConnect(host, port);
-        }
-
+        Jedis jedis = redisConnect.getRedis(pwd);
         int success = 0;
         int fail = 0;
         int processedEvents = 0;

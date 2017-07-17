@@ -135,13 +135,14 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 for (String field : saddMinuteNameFields) {
                     executeCascadHset(field, jedis, piplineMap);
                 }
-                Pipeline pipelined1 = jedis.pipelined();
+                Pipeline newPipeline = jedis.pipelined();
                 for (Map.Entry<String, String> entry : piplineMap.entrySet()) {
                     String[] key = entry.getKey().split(keySep);
                     String value = entry.getValue();
-                    pipelined.hset(key[0], key[1], value);
+                    newPipeline.hset(key[0], key[1], value);
                 }
-                pipelined1.sync();
+                newPipeline.sync();
+                newPipeline.clear();
 //                if (saddClassificationCascad) {
 ////                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
 //                    if (null != saddMinuteNameFields && saddMinuteNameFields.size() > 0) {
