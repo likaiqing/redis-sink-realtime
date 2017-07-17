@@ -17,10 +17,7 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
 
 import java.sql.*;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Created by likaiqing on 2017/6/23.
@@ -90,13 +87,12 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                 initMysqlConn();
             }
             rs = stmt.executeQuery(dbSql);
-            Map<String, String> newRoomClaMp = new HashedMap();
+            roomClaMap = new HashMap<>();
             while (rs.next()) {
                 String roomId = rs.getString(1);
                 String classi = rs.getString(2);
-                newRoomClaMp.put(roomId, classi);
+                roomClaMap.put(roomId, classi);
             }
-            roomClaMap = newRoomClaMp;
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {

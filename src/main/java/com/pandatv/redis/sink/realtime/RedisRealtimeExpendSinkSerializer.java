@@ -96,11 +96,10 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 initMysqlConn();
             }
             rs = stmt.executeQuery(dbSql);
-            Map<String, String> newRoomClaMp = new HashedMap();
+            roomClaMap = new HashMap<>();
             while (rs.next()) {
-                newRoomClaMp.put(rs.getString(1), rs.getString(2));
+                roomClaMap.put(rs.getString(1), rs.getString(2));
             }
-            roomClaMap = newRoomClaMp;
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {
@@ -143,7 +142,6 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                     pipelined.hset(key[0], key[1], value);
                 }
                 pipelined1.sync();
-                pipelined1.clear();
 //                if (saddClassificationCascad) {
 ////                    Set<String> fields = saddMinuteNameFields.stream().filter(field -> field.contains("anchor")).collect(Collectors.toSet());
 //                    if (null != saddMinuteNameFields && saddMinuteNameFields.size() > 0) {
@@ -190,6 +188,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
 //            String newKey = getClassiKey(hincrbyKeyPrefix, key);
 //            jedis.hset(newKey, minute, newValue);
         }
+        pipelined.sync();
         pipelined.clear();
 
     }

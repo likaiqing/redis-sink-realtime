@@ -89,11 +89,10 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
                 initMysqlConn();
             }
             rs = stmt.executeQuery(dbSql);
-            Map<String, String> newRoomClaMp = new HashedMap();
+            roomClaMap = new HashMap<>();
             while (rs.next()) {
-                newRoomClaMp.put(rs.getString(1), rs.getString(2));
+                roomClaMap.put(rs.getString(1), rs.getString(2));
             }
-            roomClaMap = newRoomClaMp;
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {
