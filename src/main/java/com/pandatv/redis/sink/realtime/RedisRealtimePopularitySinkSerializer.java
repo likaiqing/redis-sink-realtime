@@ -51,7 +51,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     private static String mysqlUser;
     private static String mysqlPass;
 
-    private static Map<Integer, String> roomClaMap;
+    private static Map<String, String> roomClaMap;
     private static Connection con = null;
     private static Statement stmt = null;
     private static ResultSet rs = null;
@@ -90,9 +90,9 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                 initMysqlConn();
             }
             rs = stmt.executeQuery(dbSql);
-            Map<Integer, String> newRoomClaMp = new HashedMap();
+            Map<String, String> newRoomClaMp = new HashedMap();
             while (rs.next()) {
-                int roomId = rs.getInt(1);
+                String roomId = rs.getString(1);
                 String classi = rs.getString(2);
                 newRoomClaMp.put(roomId, classi);
             }
@@ -159,7 +159,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                    String classi = roomClaMap.get(Integer.parseInt(roomId));
+                    String classi = roomClaMap.get(roomId);
                     classiPcuMap.merge(classi, pcu, (oldV, newV) -> oldV + newV);
                 }
                 Pipeline pipelined = jedis.pipelined();
