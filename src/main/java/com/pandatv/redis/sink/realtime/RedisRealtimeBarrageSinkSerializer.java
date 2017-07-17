@@ -138,7 +138,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
                 for (Map.Entry<String, String> entry : piplineMap.entrySet()) {
                     String[] key = entry.getKey().split(keySep);
                     String value = entry.getValue();
-                    pipelined.hset(key[0], key[1], value);
+                    pipelined.hset(key[0].replace("-total-","-minute-"), key[1], value);//兼容之前的key
                 }
                 pipelined1.sync();
                 pipelined1.clear();
@@ -274,7 +274,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private void executeCascadHset(String field, Jedis jedis, Map<String, String> piplineMap) {
         String parDate = field.substring(0, 8);
         String minute = field.substring(0, field.indexOf(RedisSinkConstant.redisKeySep));
-        String name = field.substring(field.indexOf(RedisSinkConstant.redisKeySep) + 1, field.lastIndexOf(RedisSinkConstant.redisKeySep)).replace("-total-", "-minute-");//兼容之前的key
+        String name = field.substring(field.indexOf(RedisSinkConstant.redisKeySep) + 1, field.lastIndexOf(RedisSinkConstant.redisKeySep));
         String suffix = field.substring(field.lastIndexOf(RedisSinkConstant.redisKeySep) + 1);
         String minuteNameKey = new StringBuffer(saddKeyPrefix).append(field).toString();
         String newKey = new StringBuffer(saddKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString();
