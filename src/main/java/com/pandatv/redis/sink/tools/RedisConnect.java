@@ -21,7 +21,7 @@ public class RedisConnect {
     }
 
     private void init(String host, int port) {
-        if (pool == null) {
+        if (pool == null || pool.isClosed()) {
             JedisPoolConfig config = new JedisPoolConfig();
             config.setMaxTotal(50);
             config.setMaxWaitMillis(5);
@@ -38,8 +38,9 @@ public class RedisConnect {
     }
 
     public void close() {
-        if (null != pool){
+        if (null != pool) {
             pool.destroy();
+            pool = null;
         }
     }
 }

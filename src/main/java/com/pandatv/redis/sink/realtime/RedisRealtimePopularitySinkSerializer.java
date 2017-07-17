@@ -174,7 +174,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             }
             minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
         }
-        if (maxCurClassiCastMinute - minCurClassiCastMinute >= 2) {
+        if (maxCurClassiCastMinute - minCurClassiCastMinute >= 1) {
             logger.info("continue execute hsetClassificationCascad()");
             hsetClassificationCascad(jedis);
         }
@@ -275,6 +275,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         mysqlUrl = context.getString("mysqlUrl");
         mysqlUser = context.getString("mysqlUser");
         mysqlPass = context.getString("mysqlPass");
+
         hsetClassificationKeySuffix = context.getString("hsetClassificationKeySuffix", "classi_pcu");
         hsetClassificationKeyName = context.getString("hsetClassificationKeyName", "minute");
         initMysqlConn();

@@ -465,7 +465,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         mysqlPass = context.getString("mysqlPass");
 
         initMysqlConn();
-        setRoomClamap(dbSqlPre);
+//        setRoomClamap(dbSqlPre);
 
         saddClassificationCascad = context.getBoolean("saddClassificationCascad", false);
         hincrbyClassificationCascad = context.getBoolean("hincrbyClassificationCascad", false);
