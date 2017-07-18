@@ -56,6 +56,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static String saddHashKeyPreVar;
     private static String saddHashKeyName;
     private static TimeHelper timeHelper;
+    private static TimeHelper mysqlTimeHelper;
     private static Map<String, String> platMap;
     private static String mysqlUrl;
     private static String mysqlUser;
@@ -123,7 +124,9 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     public int actionList() {
         int err = 0;
         try {
-            setRoomClamap(dbSqlPre);
+            if (mysqlTimeHelper.checkout()){
+                setRoomClamap(dbSqlPre);
+            }
             Pipeline pipelined = jedis.pipelined();
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
@@ -457,7 +460,9 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         saddHashKeyPreVar = context.getString("saddHashKeyPreVar");
         saddHashKeyName = context.getString("saddHashKeyName", "minute");
         long saddCascadHsetTime = context.getLong("saddCascadHsetTime", 45000l);
+        long mysqlTime = context.getLong("mysqlTime", 45000l);
         timeHelper = new TimeHelper(saddCascadHsetTime);
+        mysqlTimeHelper = new TimeHelper(mysqlTime);
         String platMapStr = context.getString("platMap", "minute");
         platMap = Splitter.on(";").omitEmptyStrings().trimResults().withKeyValueSeparator(":").split(platMapStr);
         mysqlUrl = context.getString("mysqlUrl");

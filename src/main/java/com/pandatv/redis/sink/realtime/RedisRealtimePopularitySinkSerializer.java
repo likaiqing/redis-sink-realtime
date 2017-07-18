@@ -170,7 +170,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             }
             minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
         }
-        if (maxCurClassiCastMinute - minCurClassiCastMinute >= 1) {
+        if (maxCurClassiCastMinute - minCurClassiCastMinute >= 2) {
             logger.info("continue execute hsetClassificationCascad()");
             hsetClassificationCascad(jedis);
         }
