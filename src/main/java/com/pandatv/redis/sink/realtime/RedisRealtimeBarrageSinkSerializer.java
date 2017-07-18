@@ -136,14 +136,14 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
                 for (String field : saddMinuteNameFields) {
                     executeCascadHset(field, jedis, piplineMap);
                 }
-                Pipeline pipelined1 = jedis.pipelined();
+                Pipeline newPipeline = jedis.pipelined();
                 for (Map.Entry<String, String> entry : piplineMap.entrySet()) {
                     String[] key = entry.getKey().split(keySep);
                     String value = entry.getValue();
-                    pipelined.hset(key[0].replace("-total-","-minute-"), key[1], value);//兼容之前的key
+                    newPipeline.hset(key[0].replace("-total-","-minute-"), key[1], value);//兼容之前的key
                 }
-                pipelined1.sync();
-                pipelined1.clear();
+                newPipeline.sync();
+                newPipeline.clear();
 //                logger.info("executeCascadHset方法运行结束");
 //                logger.info("saddClassificationCascad:" + saddClassificationCascad + ",saddMinuteNameFields.size:" + saddMinuteNameFields.size());
 //                if (saddClassificationCascad) {
