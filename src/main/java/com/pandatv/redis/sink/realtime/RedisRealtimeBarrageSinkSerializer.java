@@ -118,7 +118,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     public int actionList() {
         int err = 0;
         try {
-            if (mysqlTimeHelper.checkout()){
+            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
                 setRoomClamap(dbSqlPre);
             }
             logger.info("roomClaMap.size:" + roomClaMap.size());
@@ -140,7 +140,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
                 for (Map.Entry<String, String> entry : piplineMap.entrySet()) {
                     String[] key = entry.getKey().split(keySep);
                     String value = entry.getValue();
-                    newPipeline.hset(key[0].replace("-total-","-minute-"), key[1], value);//兼容之前的key
+                    newPipeline.hset(key[0].replace("-total-", "-minute-"), key[1], value);//兼容之前的key
                 }
                 newPipeline.sync();
                 newPipeline.clear();

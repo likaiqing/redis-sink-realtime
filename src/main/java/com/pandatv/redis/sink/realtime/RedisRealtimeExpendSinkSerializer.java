@@ -124,7 +124,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     public int actionList() {
         int err = 0;
         try {
-            if (mysqlTimeHelper.checkout()){
+            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
                 setRoomClamap(dbSqlPre);
             }
             Pipeline pipelined = jedis.pipelined();
