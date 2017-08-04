@@ -121,17 +121,17 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             if (mysqlTimeHelper.checkout() || roomClaMap == null) {
                 setRoomClamap(dbSqlPre);
             }
-            logger.info("roomClaMap.size:" + roomClaMap.size());
+            logger.debug("roomClaMap.size:" + roomClaMap.size());
             Pipeline pipelined = jedis.pipelined();
             long l = System.currentTimeMillis();
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
             }
-            logger.info("批处理个数:" + events.size() + ",用时:" + (System.currentTimeMillis() - l));
+            logger.debug("批处理个数:" + events.size() + ",用时:" + (System.currentTimeMillis() - l));
             pipelined.sync();
             pipelined.clear();
             if (saddCascadHset && timeHelper.checkout()) {
-                logger.info("开始循环运行方法:executeCascadHset,saddMinuteNameFields.size:" + saddMinuteNameFields.size());
+                logger.debug("开始循环运行方法:executeCascadHset,saddMinuteNameFields.size:" + saddMinuteNameFields.size());
                 Map<String, String> piplineMap = new HashedMap();
                 for (String field : saddMinuteNameFields) {
                     executeCascadHset(field, jedis, piplineMap);

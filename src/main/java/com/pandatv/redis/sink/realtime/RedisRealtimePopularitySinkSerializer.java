@@ -140,7 +140,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     private void hsetClassificationCascad(Jedis jedis) {
         if (maxCurClassiCastMinute - minCurClassiCastMinute >= 2) {
-            logger.info("maxCurClassiCastMinute:{},minCurClassiCastMinute:{}", maxCurClassiCastMinute, minCurClassiCastMinute);
+            logger.debug("maxCurClassiCastMinute:{},minCurClassiCastMinute:{}", maxCurClassiCastMinute, minCurClassiCastMinute);
             String tmpHashKey = new StringBuffer(hsetKeyPrefix).append(minCurClassiCastMinute).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
             String anchorIds = Joiner.on(",").join(jedis.hkeys(tmpHashKey));
 //            logger.info("tmpHashKey:{},anchorIds=jedis.hkeys(tmpHashKey),anchorIds:{}", tmpHashKey, anchorIds);
@@ -171,7 +171,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
         }
         if (maxCurClassiCastMinute - minCurClassiCastMinute >= 2) {
-            logger.info("continue execute hsetClassificationCascad()");
+            logger.debug("continue execute hsetClassificationCascad()");
             hsetClassificationCascad(jedis);
         }
     }
