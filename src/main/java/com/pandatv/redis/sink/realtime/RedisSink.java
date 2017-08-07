@@ -39,7 +39,6 @@ public class RedisSink extends AbstractSink implements Configurable {
 
     @Override
     public synchronized void start() {
-        redisConnect = new RedisConnect(host, port);
         counter.start();
         super.start();
     }
@@ -75,6 +74,7 @@ public class RedisSink extends AbstractSink implements Configurable {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        redisConnect = new RedisConnect(host, port);
     }
 
     @Override
