@@ -9,7 +9,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.conf.ComponentConfiguration;
-import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
@@ -19,13 +18,12 @@ import redis.clients.jedis.Pipeline;
 
 import java.sql.*;
 import java.util.*;
-import java.util.stream.IntStream;
 
 /**
  * Created by likaiqing on 2017/6/23.
  */
-public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializer {
-    private static final Logger logger = LoggerFactory.getLogger(RedisRealtimePopularitySinkSerializer.class);
+public class RedisRealtimePopularitySinkSerializerOld implements RedisEventSerializer {
+    private static final Logger logger = LoggerFactory.getLogger(RedisRealtimePopularitySinkSerializerOld.class);
     private static Set<String> minuteFields = new HashSet<>();
     //    private static Set<String> minuteRoomIdFields = new HashSet<>();
     //    private static Set<String> parDates = new HashSet<>();
@@ -59,9 +57,8 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     private static String hsetClassificationKeySuffix;
     private static String hsetClassificationKeyName;
 
-    private static long minCurClassiCastMinute = 0;
+    private static long minCurClassiCastMinute = 301707120000l;
     private static long maxCurClassiCastMinute = 0;
-    private static final String redisMinuteKey = "rt_pcu-minute";
 
     DateTimeFormatter stf = DateTimeFormat.forPattern("yyyyMMddHHmm");
 
@@ -113,17 +110,6 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     public void initialize(List<Event> events, Jedis jedis) {
         this.events = events;
         this.jedis = jedis;
-        /**
-         * 如果没有,则当天的凌晨零分
-         */
-        if (minCurClassiCastMinute == 0) {
-            String minute = jedis.get(redisMinuteKey);
-            if (StringUtils.isEmpty(minute)) {
-                minCurClassiCastMinute = Long.parseLong(DateTimeFormat.forPattern("yyyyMMdd0000").print(new DateTime()));
-            } else {
-                minCurClassiCastMinute = Long.parseLong(minute);
-            }
-        }
     }
 
     @Override
@@ -136,79 +122,25 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             }
             pipelined.sync();
             pipelined.clear();
+            if (hsetClassificationCascad) {
+                hsetClassificationCascad(jedis);
+            }
+            if (hsetCascadHset && timeHelper.checkout()) {
+                for (String field : minuteFields) {
+                    executeCascadHset(field);
+                }
+                minuteFields.clear();
+            }
         } catch (Exception e) {
             e.printStackTrace();
             err++;
         }
-        try {
-            if (timeHelper.checkout()) {
-                hsetCascad(jedis);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            logger.error("");
-        }
         return events.size() - err;
     }
 
-    /**
-     * 级联操作,全量和版区的PCU统计,maxCurClassiCastMinute不做统计,处理之后minCurClassiCastMinute = maxCurClassiCastMinute,下一个超时处理
-     *
-     * @param jedis
-     */
-    private void hsetCascad(Jedis jedis) {
-        for (; minCurClassiCastMinute < maxCurClassiCastMinute; ) {
-            Map<String, String> roomPcuMap = null;
-            int i = 3;
-            while ((roomPcuMap == null || roomPcuMap.size() == 0) && i >= 0) {
-                roomPcuMap = getRoomPcuMap(Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(-i))));
-                i--;
-            }
-            String anchorIds = Joiner.on(",").join(roomPcuMap.keySet());
-            Map<String, Integer> classiPcuMap = new HashedMap();
-            setRoomClamap(new StringBuffer(dbSqlPre).append(anchorIds).append(")").toString());
-            for (Map.Entry<String, String> entry : roomPcuMap.entrySet()) {
-                String roomId = entry.getKey();
-                int pcu = 0;
-                try {
-                    pcu = Integer.parseInt(entry.getValue());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                String classi = roomClaMap.get(roomId);
-                classiPcuMap.merge(classi, pcu, (oldV, newV) -> oldV + newV);
-            }
-            Pipeline pipelined = jedis.pipelined();
-            for (Map.Entry<String, Integer> entry : classiPcuMap.entrySet()) {
-                String newkey = new StringBuffer(hsetKeyPrefix).append(String.valueOf(minCurClassiCastMinute).substring(0, 8)).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeyName).append(RedisSinkConstant.redisKeySep).append(entry.getKey()).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeySuffix).toString();
-                pipelined.hset(newkey, String.valueOf(minCurClassiCastMinute), String.valueOf(entry.getValue()));
-            }
-            pipelined.sync();
-            pipelined.clear();
-            String parDate = String.valueOf(minCurClassiCastMinute).substring(0, 8);
-            String minuteKey = new StringBuffer(hsetKeyPrefix).append(minCurClassiCastMinute).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
-            String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(hsetHashKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
-            int total = 0;
-            for (String value : jedis.hvals(minuteKey)) {
-                try {
-                    total = total + Integer.parseInt(value);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-            jedis.hset(newKey, String.valueOf(minCurClassiCastMinute), total + "");
-            minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
-        }
-        jedis.set(redisMinuteKey, String.valueOf(minCurClassiCastMinute));
-    }
-
-    private Map<String, String> getRoomPcuMap(long minute) {
-        String tmpHashKey = new StringBuffer(hsetKeyPrefix).append(minute).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
-        return jedis.hgetAll(tmpHashKey);
-    }
-
     private void hsetClassificationCascad(Jedis jedis) {
-        if (maxCurClassiCastMinute - minCurClassiCastMinute > 3) {
+        if (maxCurClassiCastMinute - minCurClassiCastMinute >= 2) {
+            logger.debug("maxCurClassiCastMinute:{},minCurClassiCastMinute:{}", maxCurClassiCastMinute, minCurClassiCastMinute);
             String tmpHashKey = new StringBuffer(hsetKeyPrefix).append(minCurClassiCastMinute).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
             String anchorIds = Joiner.on(",").join(jedis.hkeys(tmpHashKey));
 //            logger.info("tmpHashKey:{},anchorIds=jedis.hkeys(tmpHashKey),anchorIds:{}", tmpHashKey, anchorIds);
@@ -259,27 +191,12 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         jedis.hset(newKey, field, total + "");
     }
 
-    /**
-     * 处理单个event,设置每个房间的值,超时
-     * 一直保留最大值和最小值,存入redis,每次超时处理后,将最值重新写入redis
-     * 根据当前event的时间生成当前及前三分钟的key,均hset
-     *
-     * @param event
-     * @param pipelined
-     */
     private void pipelineExecute(Event event, Pipeline pipelined) {
         Map<String, String> headers = event.getHeaders();
-        String minute = headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1));
-        String field = getField(headers);//room_id
+        String key = getKey(headers);
+        String field = getField(headers);
         String value = getValue(headers);
-        /**
-         * 1,kafka发送的数据可能会出现一分钟多都没有数据,如果这种情况出现,会有后面两分钟的数据继续往当前分钟减去3的分钟插入数据,超时处理的时候避免了没有数据的情况,最多不能超过两分钟都没有数据
-         * 2,避免重启时间过长,设置超时为5分钟,如果5分钟重启失败,不能保证重启时读到的第一分钟数据准确性
-         */
-        IntStream.range(-3, 0).mapToObj(i -> getKey(headers, minute, i)).forEach(key -> {
-            pipelined.hset(key, field, value);
-            pipelined.expire(key, 300);
-        });
+        String minute = headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1));
         try {
             long minuteLong = Long.parseLong(minute);
             if (minuteLong < minCurClassiCastMinute) {
@@ -291,6 +208,10 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         } catch (Exception e) {
             e.printStackTrace();
         }
+        minuteFields.add(minute);
+//        parDates.add(headers.get("par_date"));
+        pipelined.hset(key, field, value);
+        pipelined.expire(key, hsetExpire);
     }
 
     private String getValue(Map<String, String> headers) {
@@ -301,12 +222,6 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         return value;
     }
 
-    /**
-     * header中获取room_id值
-     *
-     * @param headers
-     * @return
-     */
     private String getField(Map<String, String> headers) {
         String field = hsetField;
         if (hsetField.contains("${")) {
@@ -315,12 +230,9 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         return field;
     }
 
-    /**
-     * 获取当前event分钟前n分钟的map结果key
-     */
-    public String getKey(Map<String, String> headers, String originMinute, int plusMinutes) {
-        String newMinute = stf.print(stf.parseDateTime(String.valueOf(originMinute)).plusMinutes(plusMinutes));
-        return new StringBuffer(hsetKeyPrefix).append(newMinute).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
+    public String getKey(Map<String, String> headers) {
+        Preconditions.checkArgument(hsetKeyPreVar.contains("${"), "hsetKeyPreVar must be variable");
+        return new StringBuffer(hsetKeyPrefix).append(headers.get(hsetKeyPreVar.substring(2, hsetKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
     }
 
     @Override
