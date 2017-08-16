@@ -120,6 +120,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             String minute = jedis.get(redisMinuteKey);
             if (StringUtils.isEmpty(minute)) {
                 minCurClassiCastMinute = Long.parseLong(DateTimeFormat.forPattern("yyyyMMdd0000").print(new DateTime()));
+                jedis.set(redisMinuteKey, String.valueOf(minCurClassiCastMinute));
             } else {
                 minCurClassiCastMinute = Long.parseLong(minute);
             }
@@ -161,43 +162,46 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             Map<String, String> roomPcuMap = null;
             int i = 3;
             while ((roomPcuMap == null || roomPcuMap.size() == 0) && i >= 0) {
-                roomPcuMap = getRoomPcuMap(Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(-i))));
+                long newMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(-i)));
+                roomPcuMap = getRoomPcuMap(newMinute);
+                logger.info("newMinute:" + newMinute + ",minCurClassiCastMinute:" + minCurClassiCastMinute + ",roomPcuMap.size:" + roomPcuMap.size() + ",i:" + i);
                 i--;
             }
-            String anchorIds = Joiner.on(",").join(roomPcuMap.keySet());
-            Map<String, Integer> classiPcuMap = new HashedMap();
-            setRoomClamap(new StringBuffer(dbSqlPre).append(anchorIds).append(")").toString());
-            for (Map.Entry<String, String> entry : roomPcuMap.entrySet()) {
-                String roomId = entry.getKey();
-                int pcu = 0;
-                try {
-                    pcu = Integer.parseInt(entry.getValue());
-                } catch (Exception e) {
-                    e.printStackTrace();
+            if (roomPcuMap.size() > 0) {
+                String anchorIds = Joiner.on(",").join(roomPcuMap.keySet());
+                Map<String, Integer> classiPcuMap = new HashedMap();
+                setRoomClamap(new StringBuffer(dbSqlPre).append(anchorIds).append(")").toString());
+                for (Map.Entry<String, String> entry : roomPcuMap.entrySet()) {
+                    String roomId = entry.getKey();
+                    int pcu = 0;
+                    try {
+                        pcu = Integer.parseInt(entry.getValue());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    String classi = roomClaMap.get(roomId);
+                    classiPcuMap.merge(classi, pcu, (oldV, newV) -> oldV + newV);
                 }
-                String classi = roomClaMap.get(roomId);
-                classiPcuMap.merge(classi, pcu, (oldV, newV) -> oldV + newV);
-            }
-            Pipeline pipelined = jedis.pipelined();
-            for (Map.Entry<String, Integer> entry : classiPcuMap.entrySet()) {
-                String newkey = new StringBuffer(hsetKeyPrefix).append(String.valueOf(minCurClassiCastMinute).substring(0, 8)).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeyName).append(RedisSinkConstant.redisKeySep).append(entry.getKey()).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeySuffix).toString();
-                pipelined.hset(newkey, String.valueOf(minCurClassiCastMinute), String.valueOf(entry.getValue()));
-            }
-            pipelined.sync();
-            pipelined.clear();
-            String parDate = String.valueOf(minCurClassiCastMinute).substring(0, 8);
-            String minuteKey = new StringBuffer(hsetKeyPrefix).append(minCurClassiCastMinute).append(RedisSinkConstant.redisKeySep).append(hsetKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
-            String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(hsetHashKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
-            int total = 0;
-            for (String value : jedis.hvals(minuteKey)) {
-                try {
-                    total = total + Integer.parseInt(value);
-                } catch (Exception e) {
-                    e.printStackTrace();
+                Pipeline pipelined = jedis.pipelined();
+                for (Map.Entry<String, Integer> entry : classiPcuMap.entrySet()) {
+                    String newkey = new StringBuffer(hsetKeyPrefix).append(String.valueOf(minCurClassiCastMinute).substring(0, 8)).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeyName).append(RedisSinkConstant.redisKeySep).append(entry.getKey()).append(RedisSinkConstant.redisKeySep).append(hsetClassificationKeySuffix).toString();
+                    pipelined.hset(newkey, String.valueOf(minCurClassiCastMinute), String.valueOf(entry.getValue()));
                 }
+                pipelined.sync();
+                pipelined.clear();
+                String parDate = String.valueOf(minCurClassiCastMinute).substring(0, 8);
+                String newKey = new StringBuffer(hsetKeyPrefix).append(parDate).append(RedisSinkConstant.redisKeySep).append(hsetHashKeyName).append(RedisSinkConstant.redisKeySep).append(hsetKeySuffix).toString();
+                int total = 0;
+                for (String value : roomPcuMap.values()) {
+                    try {
+                        total = total + Integer.parseInt(value);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                jedis.hset(newKey, String.valueOf(minCurClassiCastMinute), total + "");
+                minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
             }
-            jedis.hset(newKey, String.valueOf(minCurClassiCastMinute), total + "");
-            minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
         }
         jedis.set(redisMinuteKey, String.valueOf(minCurClassiCastMinute));
     }
