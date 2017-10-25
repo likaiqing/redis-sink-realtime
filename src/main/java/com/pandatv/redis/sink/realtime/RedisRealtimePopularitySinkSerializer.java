@@ -164,7 +164,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             while ((roomPcuMap == null || roomPcuMap.size() == 0) && i >= 0) {
                 long newMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(-i)));
                 roomPcuMap = getRoomPcuMap(newMinute);
-                logger.info("newMinute:" + newMinute + ",minCurClassiCastMinute:" + minCurClassiCastMinute + ",roomPcuMap.size:" + roomPcuMap.size() + ",i:" + i);
+//                logger.info("newMinute:" + newMinute + ",minCurClassiCastMinute:" + minCurClassiCastMinute + ",roomPcuMap.size:" + roomPcuMap.size() + ",i:" + i);
                 i--;
             }
             if (roomPcuMap.size() > 0) {
@@ -200,8 +200,11 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                     }
                 }
                 jedis.hset(newKey, String.valueOf(minCurClassiCastMinute), total + "");
-                minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
             }
+            /**
+             * 放在while循环外面,避免死循环
+             */
+            minCurClassiCastMinute = Long.parseLong(stf.print(stf.parseDateTime(String.valueOf(minCurClassiCastMinute)).plusMinutes(1)));
         }
         jedis.set(redisMinuteKey, String.valueOf(minCurClassiCastMinute));
     }
