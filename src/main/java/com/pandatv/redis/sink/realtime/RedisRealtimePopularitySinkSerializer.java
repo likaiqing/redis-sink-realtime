@@ -59,9 +59,13 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     private static String hsetClassificationKeySuffix;
     private static String hsetClassificationKeyName;
 
+    private static String hsetPgcRoomKeySuffix;
+
     private static long minCurClassiCastMinute = 0;
     private static long maxCurClassiCastMinute = 0;
     private static final String redisMinuteKey = "rt_pcu-minute";
+
+    private static List<String> pgcRoomIds = null;
 
     DateTimeFormatter stf = DateTimeFormat.forPattern("yyyyMMddHHmm");
 
@@ -284,8 +288,17 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
          * 2,避免重启时间过长,设置超时为5分钟,如果5分钟重启失败,不能保证重启时读到的第一分钟数据准确性
          */
         IntStream.range(-3, 0).mapToObj(i -> getKey(headers, minute, i)).forEach(key -> {
-            pipelined.hset(key, field, value);
+            pipelined.hsetnx(key, field, value);//20171031由hset改为hsetnx
             pipelined.expire(key, 300);
+            /**
+             * pgc需求添加房间数据
+             */
+            if (pgcRoomIds.contains(field)) {
+                int firstSep = key.indexOf(RedisSinkConstant.redisKeySep);
+                String curMinute = key.substring(key.indexOf(firstSep + 1, key.indexOf(firstSep + 1)));
+                String pgcRoomKey = getPgcRoomKey(field, curMinute);
+                pipelined.hset(pgcRoomKey, curMinute, value);
+            }
         });
         try {
             long minuteLong = Long.parseLong(minute);
@@ -298,6 +311,10 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private String getPgcRoomKey(String field, String curMinute) {
+        return new StringBuffer(hsetKeyPrefix).append(curMinute.substring(0, 8)).append(RedisSinkConstant.redisKeySep).append(field).append(RedisSinkConstant.redisKeySep).append(hsetPgcRoomKeySuffix).toString();
     }
 
     private String getValue(Map<String, String> headers) {
@@ -369,6 +386,14 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
         hsetClassificationKeySuffix = context.getString("hsetClassificationKeySuffix", "classi_pcu");
         hsetClassificationKeyName = context.getString("hsetClassificationKeyName", "minute");
+
+        /**
+         * pgc房间实时数据
+         */
+        hsetPgcRoomKeySuffix = context.getString("hsetPgcRoomKeySuffix", "room_pcu");
+        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
+        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
+
         initMysqlConn();
     }
 

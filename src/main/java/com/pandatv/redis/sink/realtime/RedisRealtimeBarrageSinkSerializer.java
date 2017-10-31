@@ -62,6 +62,8 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private static ResultSet rs = null;
     private static String dbSqlPre = "select id,classification from room";
 
+    private static List<String> pgcRoomIds = null;
+
     private static boolean saddClassificationCascad = false;
     private static boolean hincrbyClassificationCascad = false;
 
@@ -301,7 +303,11 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         String[] saddKeySuffixArr = saddKeySuffix.split("\\s+");
         String[] saddValueArr = saddValue.split("\\s+");
         for (int i = 0; i < saddKeyNameArr.length; i++) {
-            String keyName = getParamValue(headers, saddKeyNameArr[i].trim());
+            String keyNameVar = saddKeyNameArr[i].trim();
+            String keyName = getParamValue(headers, keyNameVar);
+            if (keyNameVar.equals("${room_id}") && !pgcRoomIds.contains(keyName)){
+                continue;
+            }
             String suffix = saddKeySuffixArr[i].trim();
             String value = getParamValue(headers, saddValueArr[i].trim());
             String key = getSaddKey(headers, keyName, suffix);
@@ -330,7 +336,11 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         String[] hincrbyFieldArr = hincrbyField.split("\\s+");
         String[] hincrbyValueArr = hincrbyValue.split("\\s+");
         for (int i = 0; i < hincrbyKeyNameArr.length; i++) {
-            String name = getParamValue(headers, hincrbyKeyNameArr[i].trim());
+            String nameVar = hincrbyKeyNameArr[i].trim();
+            String name = getParamValue(headers, nameVar);
+            if (nameVar.equals("${room_id}") && !pgcRoomIds.contains(name)){
+                continue;
+            }
             String suffix = hincrbyKeySuffixArr[i].trim();
             String field = getParamValue(headers, hincrbyFieldArr[i].trim());
             int value = 1;
@@ -339,10 +349,10 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            if (suffix.contains("room")) {
-                hincrMinuteNameMap.put(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString(), value);
-//                hincrMinuteNameFields.add(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
-            }
+//            if (suffix.contains("room")) {
+//                hincrMinuteNameMap.put(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString(), value);
+////                hincrMinuteNameFields.add(new StringBuffer(field).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
+//            }
             String key = getHincrKey(headers, name, suffix);
             pipelined.hincrBy(key, field, value);
         }
@@ -424,6 +434,12 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
         saddClassificationCascad = context.getBoolean("saddClassificationCascad", false);
         hincrbyClassificationCascad = context.getBoolean("hincrbyClassificationCascad", false);
+
+        /**
+         * pgc房间实时数据
+         */
+        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
+        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
     }
 
     @Override
