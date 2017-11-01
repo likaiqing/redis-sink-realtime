@@ -56,6 +56,20 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     private static ResultSet rs = null;
     private static String dbSqlPre = "select id,classification from room where id in (";
 
+    /**
+     * pgc项目房间库
+     */
+    private static boolean pgcFlag;
+    private static String pgcMysqlUrl;
+    private static String pgcMysqlUser;
+    private static String pgcMysqlPass;
+    private static String pgcSql = "select room_id from bigdata_bi.pgc_info where room_id!='' order by up_time desc limit 500";
+    private static Connection pgcCon = null;
+    private static Statement pgcStmt = null;
+    private static ResultSet pgcRs = null;
+
+    private static TimeHelper pgcMysqlTimeHelper;
+
     private static String hsetClassificationKeySuffix;
     private static String hsetClassificationKeyName;
 
@@ -65,7 +79,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     private static long maxCurClassiCastMinute = 0;
     private static final String redisMinuteKey = "rt_pcu-minute";
 
-    private static List<String> pgcRoomIds = null;
+    private static List<String> pgcRoomIds = new ArrayList<>();
 
     DateTimeFormatter stf = DateTimeFormat.forPattern("yyyyMMddHHmm");
 
@@ -128,6 +142,9 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             } else {
                 minCurClassiCastMinute = Long.parseLong(minute);
             }
+        }
+        if (pgcFlag && pgcMysqlTimeHelper.checkout()) {
+            initPgcRoomIds();
         }
     }
 
@@ -387,14 +404,72 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         hsetClassificationKeySuffix = context.getString("hsetClassificationKeySuffix", "classi_pcu");
         hsetClassificationKeyName = context.getString("hsetClassificationKeyName", "minute");
 
-        /**
-         * pgc房间实时数据
-         */
-        hsetPgcRoomKeySuffix = context.getString("hsetPgcRoomKeySuffix", "room_pcu");
-        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
-        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
-
         initMysqlConn();
+
+        /**
+         * pgc房间实时数据配置
+         */
+        pgcFlag = context.getBoolean("pgcFlag", false);
+        if (pgcFlag) {
+            hsetPgcRoomKeySuffix = context.getString("hsetPgcRoomKeySuffix", "room_pcu");
+//        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
+//        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
+            pgcMysqlUrl = context.getString("pgcMysqlUrl");
+            pgcMysqlUser = context.getString("pgcMysqlUser");
+            pgcMysqlPass = context.getString("pgcMysqlPass");
+
+            long pgcMysqlTime = context.getLong("pgcMysqlTime", 86400000l);
+            pgcMysqlTimeHelper = new TimeHelper(pgcMysqlTime);
+            /**
+             * pgc房间初始化
+             */
+            initPgcConn();
+            initPgcRoomIds();
+        }
+    }
+
+    private void initPgcRoomIds() {
+        try {
+            if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
+                initPgcConn();
+            }
+            pgcRs = pgcStmt.executeQuery(pgcSql);
+            List<String> rids = new ArrayList<>();
+            while (pgcRs.next()) {
+                rids.add(pgcRs.getString(1));
+            }
+            pgcRoomIds.clear();
+            pgcRoomIds = rids;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (!pgcRs.isClosed() || pgcRs == null) {
+                    pgcRs.close();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void initPgcConn() {
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        try {
+            if (null == pgcCon || pgcCon.isClosed()) {
+                pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
+                logger.info("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
+            }
+            if (null == pgcStmt || pgcStmt.isClosed()) {
+                pgcStmt = pgcCon.createStatement();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

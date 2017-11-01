@@ -62,7 +62,20 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private static ResultSet rs = null;
     private static String dbSqlPre = "select id,classification from room";
 
-    private static List<String> pgcRoomIds = null;
+    /**
+     * pgc项目房间库
+     */
+    private static boolean pgcFlag;
+    private static String pgcMysqlUrl;
+    private static String pgcMysqlUser;
+    private static String pgcMysqlPass;
+    private static String pgcSql = "select room_id from bigdata_bi.pgc_info where room_id!='' order by up_time desc limit 500";
+    private static Connection pgcCon = null;
+    private static Statement pgcStmt = null;
+    private static ResultSet pgcRs = null;
+
+    private static List<String> pgcRoomIds = new ArrayList<>();
+    private static TimeHelper pgcMysqlTimeHelper;
 
     private static boolean saddClassificationCascad = false;
     private static boolean hincrbyClassificationCascad = false;
@@ -114,6 +127,9 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     public void initialize(List<Event> events, Jedis jedis) {
         this.events = events;
         this.jedis = jedis;
+        if (pgcFlag && pgcMysqlTimeHelper.checkout()){
+            initPgcRoomIds();
+        }
     }
 
     @Override
@@ -305,7 +321,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         for (int i = 0; i < saddKeyNameArr.length; i++) {
             String keyNameVar = saddKeyNameArr[i].trim();
             String keyName = getParamValue(headers, keyNameVar);
-            if (keyNameVar.equals("${room_id}") && !pgcRoomIds.contains(keyName)){
+            if (keyNameVar.equals("${room_id}") && !pgcRoomIds.contains(keyName)) {
                 continue;
             }
             String suffix = saddKeySuffixArr[i].trim();
@@ -338,7 +354,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         for (int i = 0; i < hincrbyKeyNameArr.length; i++) {
             String nameVar = hincrbyKeyNameArr[i].trim();
             String name = getParamValue(headers, nameVar);
-            if (nameVar.equals("${room_id}") && !pgcRoomIds.contains(name)){
+            if (nameVar.equals("${room_id}") && !pgcRoomIds.contains(name)) {
                 continue;
             }
             String suffix = hincrbyKeySuffixArr[i].trim();
@@ -436,10 +452,65 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         hincrbyClassificationCascad = context.getBoolean("hincrbyClassificationCascad", false);
 
         /**
-         * pgc房间实时数据
+         * pgc房间实时数据配置
          */
-        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
-        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
+//        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
+//        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
+        pgcFlag = context.getBoolean("pgcFlag",false);
+        if (pgcFlag){
+            pgcMysqlUrl = context.getString("pgcMysqlUrl");
+            pgcMysqlUser = context.getString("pgcMysqlUser");
+            pgcMysqlPass = context.getString("pgcMysqlPass");
+
+            long pgcMysqlTime = context.getLong("pgcMysqlTime", 86400000l);
+            pgcMysqlTimeHelper = new TimeHelper(pgcMysqlTime);
+            initPgcConn();
+            initPgcRoomIds();
+        }
+    }
+
+    private void initPgcRoomIds() {
+        try {
+            if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
+                initPgcConn();
+            }
+            pgcRs = pgcStmt.executeQuery(pgcSql);
+            List<String> rids = new ArrayList<>();
+            while (pgcRs.next()) {
+                rids.add(pgcRs.getString(1));
+            }
+            pgcRoomIds.clear();
+            pgcRoomIds = rids;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (!pgcRs.isClosed() || pgcRs == null) {
+                    pgcRs.close();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void initPgcConn() {
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        try {
+            if (null == pgcCon || pgcCon.isClosed()) {
+                pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
+                logger.info("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
+            }
+            if (null == pgcStmt || pgcStmt.isClosed()) {
+                pgcStmt = pgcCon.createStatement();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
