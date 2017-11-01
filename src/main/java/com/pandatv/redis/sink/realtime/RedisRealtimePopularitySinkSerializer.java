@@ -295,7 +295,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
              */
             if (pgcRoomIds.contains(field)) {
                 int firstSep = key.indexOf(RedisSinkConstant.redisKeySep);
-                String curMinute = key.substring(key.indexOf(firstSep + 1, key.indexOf(firstSep + 1)));
+                String curMinute = key.substring(firstSep + 1, key.indexOf(RedisSinkConstant.redisKeySep, firstSep + 1));
                 String pgcRoomKey = getPgcRoomKey(field, curMinute);
                 pipelined.hset(pgcRoomKey, curMinute, value);
             }
