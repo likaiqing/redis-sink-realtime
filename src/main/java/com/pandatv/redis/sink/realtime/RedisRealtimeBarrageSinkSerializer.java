@@ -60,7 +60,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     private static Connection con = null;
     private static Statement stmt = null;
     private static ResultSet rs = null;
-    private static String dbSqlPre = "select id,classification from room";
+    private static String dbSqlPre = "select id,classification from room where id in (";
 
     /**
      * pgc项目房间库
@@ -105,10 +105,12 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
                 initMysqlConn();
             }
             rs = stmt.executeQuery(dbSql);
-            roomClaMap = new HashMap<>();
+            Map<String,String> newRoomClaMap = new HashedMap();
+//            roomClaMap = new HashMap<>();
             while (rs.next()) {
-                roomClaMap.put(rs.getString(1), rs.getString(2));
+                newRoomClaMap.put(rs.getString(1), rs.getString(2));
             }
+            roomClaMap = newRoomClaMap;
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {
@@ -127,7 +129,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     public void initialize(List<Event> events, Jedis jedis) {
         this.events = events;
         this.jedis = jedis;
-        if (pgcFlag && pgcMysqlTimeHelper.checkout()){
+        if (pgcFlag && pgcMysqlTimeHelper.checkout()) {
             initPgcRoomIds();
         }
     }
@@ -136,12 +138,14 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
     public int actionList() {
         int err = 0;
         try {
-            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
-                setRoomClamap(dbSqlPre);
-            }
+//            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
+//                setRoomClamap(dbSqlPre);
+//            }
 //            logger.debug("roomClaMap.size:" + roomClaMap.size());
             Pipeline pipelined = jedis.pipelined();
             long l = System.currentTimeMillis();
+            String roomIds = events.stream().map(e -> e.getHeaders().get("room_id")).reduce((a, b) -> new StringBuffer(a).append(",").append(b).toString()).get();
+            setRoomClamap(new StringBuffer(dbSqlPre).append(roomIds).append(")").toString());
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
             }
@@ -456,8 +460,8 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
          */
 //        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
 //        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
-        pgcFlag = context.getBoolean("pgcFlag",false);
-        if (pgcFlag){
+        pgcFlag = context.getBoolean("pgcFlag", false);
+        if (pgcFlag) {
             pgcMysqlUrl = context.getString("pgcMysqlUrl");
             pgcMysqlUser = context.getString("pgcMysqlUser");
             pgcMysqlPass = context.getString("pgcMysqlPass");

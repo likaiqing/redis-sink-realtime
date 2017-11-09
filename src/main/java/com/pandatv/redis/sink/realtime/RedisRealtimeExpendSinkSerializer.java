@@ -67,7 +67,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static Statement stmt = null;
     private static ResultSet rs = null;
     //消费日志中是主播的qid,非房间号
-    private static String dbSqlPre = "select hostid,classification from room";
+    private static String dbSqlPre = "select hostid,classification from room where id in (";
 
     private static boolean saddClassificationCascad = false;
     private static boolean hincrbyClassificationCascad = false;
@@ -96,11 +96,17 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
                 initMysqlConn();
             }
+//            long start = System.currentTimeMillis();
             rs = stmt.executeQuery(dbSql);
-            roomClaMap = new HashMap<>();
+            Map<String, String> newRoomClaMap = new HashedMap();
+//            roomClaMap = new HashMap<>();
+//            logger.info("dbSql:" + dbSql);
             while (rs.next()) {
-                roomClaMap.put(rs.getString(1), rs.getString(2));
+                newRoomClaMap.put(rs.getString(1), rs.getString(2));
             }
+            roomClaMap = newRoomClaMap;
+//            long end = System.currentTimeMillis();
+//            logger.info("查询mysql用时:" + (end - start) + "毫秒"+",rids:"+dbSql.split(",").length);
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {
@@ -124,9 +130,11 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     public int actionList() {
         int err = 0;
         try {
-            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
-                setRoomClamap(dbSqlPre);
-            }
+//            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
+//                setRoomClamap(dbSqlPre);
+//            }
+            String roomIds = events.stream().map(e -> e.getHeaders().get("rid")).reduce((a, b) -> new StringBuffer(a).append(",").append(b).toString()).get();
+            setRoomClamap(new StringBuffer(dbSqlPre).append(roomIds).append(")").toString());
             Pipeline pipelined = jedis.pipelined();
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
