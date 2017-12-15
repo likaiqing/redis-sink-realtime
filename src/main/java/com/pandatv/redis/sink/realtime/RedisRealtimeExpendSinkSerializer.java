@@ -67,7 +67,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static Statement stmt = null;
     private static ResultSet rs = null;
     //消费日志中是主播的qid,非房间号
-    private static String dbSqlPre = "select hostid,classification from room where id in (";
+    private static String dbSqlPre = "select hostid,classification from room where hostid in (";
 
     private static boolean saddClassificationCascad = false;
     private static boolean hincrbyClassificationCascad = false;
@@ -105,6 +105,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 newRoomClaMap.put(rs.getString(1), rs.getString(2));
             }
             roomClaMap = newRoomClaMap;
+//            logger.info("dbSql:" + dbSql + "; -- newRoomClaMap.size:" + newRoomClaMap.size() + "; -- roomClaMap.size:" + roomClaMap.size());
 //            long end = System.currentTimeMillis();
 //            logger.info("查询mysql用时:" + (end - start) + "毫秒"+",rids:"+dbSql.split(",").length);
         } catch (SQLException e) {
@@ -133,7 +134,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
 //            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
 //                setRoomClamap(dbSqlPre);
 //            }
-            String roomIds = events.stream().map(e -> e.getHeaders().get("rid")).reduce((a, b) -> new StringBuffer(a).append(",").append(b).toString()).get();
+            String roomIds = events.stream().map(e -> e.getHeaders().get("anchor_id")).distinct().reduce((a, b) -> new StringBuffer(a).append(",").append(b).toString()).get();
             setRoomClamap(new StringBuffer(dbSqlPre).append(roomIds).append(")").toString());
             Pipeline pipelined = jedis.pipelined();
             for (Event event : events) {
