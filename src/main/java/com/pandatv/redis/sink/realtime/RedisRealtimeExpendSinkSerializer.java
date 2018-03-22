@@ -57,10 +57,11 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static String saddHashKeyName;
     private static TimeHelper timeHelper;
     private static TimeHelper mysqlTimeHelper;
-    private static Map<String, String> platMap;
+    private static Map<String, String> platMap = new HashedMap();
     private static String mysqlUrl;
     private static String mysqlUser;
     private static String mysqlPass;
+    private static boolean useMysql;
 
     private static Map<String, String> roomClaMap;
     private static Connection con = null;
@@ -134,8 +135,11 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
 //            if (mysqlTimeHelper.checkout() || roomClaMap == null) {
 //                setRoomClamap(dbSqlPre);
 //            }
-            String roomIds = events.stream().map(e -> e.getHeaders().get("anchor_id")).distinct().reduce((a, b) -> new StringBuffer(a).append(",").append(b).toString()).get();
-            setRoomClamap(new StringBuffer(dbSqlPre).append(roomIds).append(")").toString());
+
+            if (useMysql) {
+                String roomIds = events.stream().map(e -> e.getHeaders().get("anchor_id")).distinct().reduce((a, b) -> new StringBuffer(a).append(",").append(b).toString()).get();
+                setRoomClamap(new StringBuffer(dbSqlPre).append(roomIds).append(")").toString());
+            }
             Pipeline pipelined = jedis.pipelined();
             for (Event event : events) {
                 pipelineExecute(event, pipelined);
@@ -151,6 +155,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 for (Map.Entry<String, String> entry : piplineMap.entrySet()) {
                     String[] key = entry.getKey().split(keySep);
                     String value = entry.getValue();
+                    System.out.println("hset(" + key[0] + "," + key[1] + "," + value + ")");
                     newPipeline.hset(key[0], key[1], value);
                 }
                 newPipeline.sync();
@@ -375,6 +380,7 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             String value = getParamValue(headers, saddValueArr[i]);
             String key = getSaddKey(headers, name, suffix);
             saddMinuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
+            System.out.println("pipelined.sadd(" + key + "," + value + ")");
             pipelined.sadd(key, value);
             pipelined.expire(key, saddExpire);
         }
@@ -438,19 +444,21 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         condition = context.getString("condition", "none");
 
         hincrby = context.getBoolean("hincrby", false);
-        hincrbyKeyPrefix = context.getString("hincrbyKeyPrefix");
-        if (StringUtils.isNotEmpty(hincrbyKeyPrefix) && !hincrbyKeyPrefix.endsWith(RedisSinkConstant.redisKeySep))
-            hincrbyKeyPrefix = hincrbyKeyPrefix + RedisSinkConstant.redisKeySep;
-        hincrbyKeyPreVar = context.getString("hincrbyKeyPreVar");
-        hincrbyKeyName = context.getString("hincrbyKeyName");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeyName), "hincrbyKeyName must ");
-        hincrbyKeySuffix = context.getString("hincrbyKeySuffix");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeySuffix), "hincrbyKeySuffix must ");
-        hincrbyField = context.getString("hincrbyField");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyField), "hincrbyField must ");
-        hincrbyValue = context.getString("hincrbyValue");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyValue), "hincrbyValue must ");
-
+        if (hincrby) {
+            hincrbyKeyPrefix = context.getString("hincrbyKeyPrefix");
+            if (StringUtils.isNotEmpty(hincrbyKeyPrefix) && !hincrbyKeyPrefix.endsWith(RedisSinkConstant.redisKeySep)) {
+                hincrbyKeyPrefix = hincrbyKeyPrefix + RedisSinkConstant.redisKeySep;
+            }
+            hincrbyKeyPreVar = context.getString("hincrbyKeyPreVar");
+            hincrbyKeyName = context.getString("hincrbyKeyName");
+            Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeyName), "hincrbyKeyName must ");
+            hincrbyKeySuffix = context.getString("hincrbyKeySuffix");
+            Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyKeySuffix), "hincrbyKeySuffix must ");
+            hincrbyField = context.getString("hincrbyField");
+            Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyField), "hincrbyField must ");
+            hincrbyValue = context.getString("hincrbyValue");
+            Preconditions.checkArgument(StringUtils.isNotEmpty(hincrbyValue), "hincrbyValue must ");
+        }
 
         sadd = context.getBoolean("sadd");
         saddExpire = context.getInteger("saddExpire", 1800);
@@ -473,12 +481,17 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         timeHelper = new TimeHelper(saddCascadHsetTime);
         mysqlTimeHelper = new TimeHelper(mysqlTime);
         String platMapStr = context.getString("platMap", "minute");
-        platMap = Splitter.on(";").omitEmptyStrings().trimResults().withKeyValueSeparator(":").split(platMapStr);
+        if (platMapStr.contains(":")) {
+            platMap = Splitter.on(";").omitEmptyStrings().trimResults().withKeyValueSeparator(":").split(platMapStr);
+        }
         mysqlUrl = context.getString("mysqlUrl");
         mysqlUser = context.getString("mysqlUser");
         mysqlPass = context.getString("mysqlPass");
+        useMysql = context.getBoolean("useMysql", true);
 
-        initMysqlConn();
+        if (useMysql) {
+            initMysqlConn();
+        }
 //        setRoomClamap(dbSqlPre);
 
         saddClassificationCascad = context.getBoolean("saddClassificationCascad", false);
