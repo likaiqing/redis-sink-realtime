@@ -155,7 +155,6 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
                 for (Map.Entry<String, String> entry : piplineMap.entrySet()) {
                     String[] key = entry.getKey().split(keySep);
                     String value = entry.getValue();
-                    System.out.println("hset(" + key[0] + "," + key[1] + "," + value + ")");
                     newPipeline.hset(key[0], key[1], value);
                 }
                 newPipeline.sync();
@@ -380,7 +379,6 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
             String value = getParamValue(headers, saddValueArr[i]);
             String key = getSaddKey(headers, name, suffix);
             saddMinuteNameFields.add(new StringBuffer(headers.get(saddKeyPreVar.substring(2, saddKeyPreVar.length() - 1))).append(RedisSinkConstant.redisKeySep).append(name).append(RedisSinkConstant.redisKeySep).append(suffix).toString());
-            System.out.println("pipelined.sadd(" + key + "," + value + ")");
             pipelined.sadd(key, value);
             pipelined.expire(key, saddExpire);
         }
