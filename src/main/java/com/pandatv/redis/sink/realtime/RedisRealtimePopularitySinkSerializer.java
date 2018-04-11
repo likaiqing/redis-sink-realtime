@@ -81,6 +81,9 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     private static List<String> pgcRoomIds = new ArrayList<>();
 
+    private static int pgcReconnectCnt = 0;
+    private static boolean pgcReconnectFlag = true;
+
     DateTimeFormatter stf = DateTimeFormat.forPattern("yyyyMMddHHmm");
 
     private static void initMysqlConn() {
@@ -144,6 +147,8 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             }
         }
         if (pgcFlag && pgcMysqlTimeHelper.checkout()) {
+            pgcReconnectCnt = 0;
+            pgcReconnectFlag = true;
             initPgcRoomIds();
         }
     }
@@ -411,6 +416,11 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
          */
         pgcFlag = context.getBoolean("pgcFlag", false);
         if (pgcFlag) {
+            try {
+                Class.forName("com.mysql.jdbc.Driver");
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+            }
             hsetPgcRoomKeySuffix = context.getString("hsetPgcRoomKeySuffix", "room_pcu");
 //        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
 //        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
@@ -429,36 +439,37 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
     }
 
     private void initPgcRoomIds() {
-        try {
-            if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
-                initPgcConn();
-            }
-            pgcRs = pgcStmt.executeQuery(pgcSql);
-            List<String> rids = new ArrayList<>();
-            while (pgcRs.next()) {
-                rids.add(pgcRs.getString(1));
-            }
-            pgcRoomIds.clear();
-            pgcRoomIds = rids;
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
+        while (pgcReconnectFlag && pgcReconnectCnt < 5) {
+            pgcReconnectCnt++;
             try {
-                if (!pgcRs.isClosed() || pgcRs == null) {
-                    pgcRs.close();
+                if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
+                    initPgcConn();
                 }
+                pgcRs = pgcStmt.executeQuery(pgcSql);
+                List<String> rids = new ArrayList<>();
+                while (pgcRs.next()) {
+                    rids.add(pgcRs.getString(1));
+                }
+                pgcRoomIds.clear();
+                pgcRoomIds = rids;
             } catch (SQLException e) {
                 e.printStackTrace();
+                logger.error("initPgcRoomIds报错,pgcReconnectCnt=" + pgcReconnectCnt);
+            } finally {
+                try {
+                    if (!pgcRs.isClosed() || pgcRs == null) {
+                        pgcRs.close();
+                    }
+                    pgcReconnectFlag = false;
+                    logger.info("设置pgcReconnectFlag=false,pgcReconnectCnt=" + pgcReconnectCnt + ",pgcRoomIds:" + pgcRoomIds);
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
 
     private void initPgcConn() {
-        try {
-            Class.forName("com.mysql.jdbc.Driver");
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
         try {
             if (null == pgcCon || pgcCon.isClosed()) {
                 pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
