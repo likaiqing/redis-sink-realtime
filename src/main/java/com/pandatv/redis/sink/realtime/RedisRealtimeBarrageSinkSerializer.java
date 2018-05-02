@@ -82,18 +82,13 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
     private static void initMysqlConn() {
         try {
-            Class.forName("com.mysql.jdbc.Driver");
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        try {
-            if (null == con || con.isClosed()) {
-                con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
-                logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
-            }
-            if (null == stmt || stmt.isClosed()) {
-                stmt = con.createStatement();
-            }
+//            if (null == con || con.isClosed()) {
+            con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
+            logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
+//            }
+//            if (null == stmt || stmt.isClosed()) {
+            stmt = con.createStatement();
+//            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -101,11 +96,11 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
     public static void setRoomClamap(String dbSql) {
         try {
-            if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
-                initMysqlConn();
-            }
+//            if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
+            initMysqlConn();
+//            }
             rs = stmt.executeQuery(dbSql);
-            Map<String,String> newRoomClaMap = new HashedMap();
+            Map<String, String> newRoomClaMap = new HashedMap();
 //            roomClaMap = new HashMap<>();
             while (rs.next()) {
                 newRoomClaMap.put(rs.getString(1), rs.getString(2));
@@ -115,8 +110,14 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             e.printStackTrace();
         } finally {
             try {
-                if (!rs.isClosed() || rs == null) {
+                if (rs != null || !rs.isClosed()) {
                     rs.close();
+                }
+                if (stmt != null || !stmt.isClosed()) {
+                    stmt.close();
+                }
+                if (con != null || !con.isClosed()) {
+                    con.close();
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -448,7 +449,11 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         mysqlUrl = context.getString("mysqlUrl");
         mysqlUser = context.getString("mysqlUser");
         mysqlPass = context.getString("mysqlPass");
-
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
         initMysqlConn();
 //        setRoomClamap(dbSqlPre);
 
@@ -475,9 +480,9 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
     private void initPgcRoomIds() {
         try {
-            if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
-                initPgcConn();
-            }
+//            if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
+            initPgcConn();
+//            }
             pgcRs = pgcStmt.executeQuery(pgcSql);
             List<String> rids = new ArrayList<>();
             while (pgcRs.next()) {
@@ -489,8 +494,14 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
             e.printStackTrace();
         } finally {
             try {
-                if (!pgcRs.isClosed() || pgcRs == null) {
+                if (pgcRs != null || !pgcRs.isClosed()) {
                     pgcRs.close();
+                }
+                if (pgcStmt != null || !pgcStmt.isClosed()) {
+                    pgcStmt.close();
+                }
+                if (pgcCon != null || !pgcCon.isClosed()) {
+                    pgcCon.close();
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -500,18 +511,13 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
 
     private void initPgcConn() {
         try {
-            Class.forName("com.mysql.jdbc.Driver");
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        try {
-            if (null == pgcCon || pgcCon.isClosed()) {
-                pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
-                logger.info("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
-            }
-            if (null == pgcStmt || pgcStmt.isClosed()) {
-                pgcStmt = pgcCon.createStatement();
-            }
+//            if (null == pgcCon || pgcCon.isClosed()) {
+            pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
+            logger.info("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
+//            }
+//            if (null == pgcStmt || pgcStmt.isClosed()) {
+            pgcStmt = pgcCon.createStatement();
+//            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
