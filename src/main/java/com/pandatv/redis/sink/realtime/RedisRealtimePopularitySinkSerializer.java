@@ -88,18 +88,13 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     private static void initMysqlConn() {
         try {
-            Class.forName("com.mysql.jdbc.Driver");
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        try {
-            if (null == con || con.isClosed()) {
-                con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
-                logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
-            }
-            if (null == stmt || stmt.isClosed()) {
-                stmt = con.createStatement();
-            }
+//            if (null == con || con.isClosed()) {
+            con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
+            logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
+//            }
+//            if (null == stmt || stmt.isClosed()) {
+            stmt = con.createStatement();
+//            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -107,9 +102,9 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     public static void setRoomClamap(String dbSql) {
         try {
-            if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
-                initMysqlConn();
-            }
+//            if (con.isClosed() || con == null || stmt.isClosed() || stmt == null) {
+            initMysqlConn();
+//            }
             rs = stmt.executeQuery(dbSql);
             roomClaMap = new HashMap<>();
             while (rs.next()) {
@@ -121,8 +116,14 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
             e.printStackTrace();
         } finally {
             try {
-                if (!rs.isClosed() || rs == null) {
+                if (rs != null || !rs.isClosed()) {
                     rs.close();
+                }
+                if (null == stmt || !stmt.isClosed()) {
+                    stmt.close();
+                }
+                if (null == con || !con.isClosed()) {
+                    con.close();
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -409,6 +410,11 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         hsetClassificationKeySuffix = context.getString("hsetClassificationKeySuffix", "classi_pcu");
         hsetClassificationKeyName = context.getString("hsetClassificationKeyName", "minute");
 
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
         initMysqlConn();
 
         /**
@@ -416,11 +422,6 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
          */
         pgcFlag = context.getBoolean("pgcFlag", false);
         if (pgcFlag) {
-            try {
-                Class.forName("com.mysql.jdbc.Driver");
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
-            }
             hsetPgcRoomKeySuffix = context.getString("hsetPgcRoomKeySuffix", "room_pcu");
 //        String pgcRoomIdStr = context.getString("pgcRoomIdFilter", "");
 //        pgcRoomIds = Arrays.asList(pgcRoomIdStr.split(","));
@@ -442,9 +443,9 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         while (pgcReconnectFlag && pgcReconnectCnt < 5) {
             pgcReconnectCnt++;
             try {
-                if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
-                    initPgcConn();
-                }
+//                if (pgcCon.isClosed() || pgcCon == null || pgcStmt.isClosed() || pgcStmt == null) {
+                initPgcConn();
+//                }
                 pgcRs = pgcStmt.executeQuery(pgcSql);
                 List<String> rids = new ArrayList<>();
                 while (pgcRs.next()) {
@@ -457,9 +458,12 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
                 logger.error("initPgcRoomIds报错,pgcReconnectCnt=" + pgcReconnectCnt);
             } finally {
                 try {
-                    if (!pgcRs.isClosed() || pgcRs == null) {
-                        pgcRs.close();
-                    }
+//                    if (!pgcRs.isClosed() || pgcRs == null) {
+//                        pgcRs.close();
+//                    }
+                    pgcRs.close();
+                    pgcStmt.close();
+                    pgcCon.close();
                     pgcReconnectFlag = false;
                     logger.info("设置pgcReconnectFlag=false,pgcReconnectCnt=" + pgcReconnectCnt + ",pgcRoomIds:" + pgcRoomIds);
                 } catch (SQLException e) {
@@ -471,13 +475,13 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
 
     private void initPgcConn() {
         try {
-            if (null == pgcCon || pgcCon.isClosed()) {
-                pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
-                logger.info("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
-            }
-            if (null == pgcStmt || pgcStmt.isClosed()) {
-                pgcStmt = pgcCon.createStatement();
-            }
+//            if (null == pgcCon || pgcCon.isClosed()) {
+            pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
+            logger.info("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
+//            }
+//            if (null == pgcStmt || pgcStmt.isClosed()) {
+            pgcStmt = pgcCon.createStatement();
+//            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
