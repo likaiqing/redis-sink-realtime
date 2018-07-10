@@ -55,8 +55,6 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     private static boolean saddCascadHset = false;
     private static String saddHashKeyPreVar;
     private static String saddHashKeyName;
-    private static TimeHelper timeHelper;
-    private static TimeHelper mysqlTimeHelper;
     private static Map<String, String> platMap = new HashedMap();
     private static String mysqlUrl;
     private static String mysqlUser;
@@ -315,8 +313,8 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
     }
 
     private boolean checkEvent(Event event) {
-        Map<String, String> headers = event.getHeaders();
         if (!condition.equalsIgnoreCase("none")) {
+            Map<String, String> headers = event.getHeaders();
             if (condition.contains("&&")) {
                 String[] conArr = condition.split("&&");
                 boolean flag = true;
@@ -476,8 +474,6 @@ public class RedisRealtimeExpendSinkSerializer implements RedisEventSerializer {
         saddHashKeyName = context.getString("saddHashKeyName", "minute");
         long saddCascadHsetTime = context.getLong("saddCascadHsetTime", 45000l);
         long mysqlTime = context.getLong("mysqlTime", 45000l);
-        timeHelper = new TimeHelper(saddCascadHsetTime);
-        mysqlTimeHelper = new TimeHelper(mysqlTime);
         String platMapStr = context.getString("platMap", "minute");
         if (platMapStr.contains(":")) {
             platMap = Splitter.on(";").omitEmptyStrings().trimResults().withKeyValueSeparator(":").split(platMapStr);
