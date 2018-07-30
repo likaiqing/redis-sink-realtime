@@ -84,7 +84,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         try {
 //            if (null == con || con.isClosed()) {
             con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
-            logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
+            logger.debug("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
 //            }
 //            if (null == stmt || stmt.isClosed()) {
             stmt = con.createStatement();
@@ -513,7 +513,7 @@ public class RedisRealtimeBarrageSinkSerializer implements RedisEventSerializer 
         try {
 //            if (null == pgcCon || pgcCon.isClosed()) {
             pgcCon = DriverManager.getConnection(pgcMysqlUrl, pgcMysqlUser, pgcMysqlPass);
-            logger.info("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
+            logger.debug("DriverManager.getConnection,mysqlUrl:{}", pgcMysqlUrl);
 //            }
 //            if (null == pgcStmt || pgcStmt.isClosed()) {
             pgcStmt = pgcCon.createStatement();

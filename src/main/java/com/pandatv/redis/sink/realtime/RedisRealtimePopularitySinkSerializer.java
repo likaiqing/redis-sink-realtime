@@ -90,7 +90,7 @@ public class RedisRealtimePopularitySinkSerializer implements RedisEventSerializ
         try {
 //            if (null == con || con.isClosed()) {
             con = DriverManager.getConnection(mysqlUrl, mysqlUser, mysqlPass);
-            logger.info("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
+            logger.debug("DriverManager.getConnection,mysqlUrl:{}", mysqlUrl);
 //            }
 //            if (null == stmt || stmt.isClosed()) {
             stmt = con.createStatement();
