@@ -52,8 +52,10 @@ public class RedisSaddSerialier implements RedisEventSerializer {
                 pipelineExecute(event, pipelined, expireKeys);
             }
             logger.debug("actionList,events.size:" + events.size());
-            for (String expireKey : expireKeys) {
-                pipelined.expire(expireKey, saddExpire);
+            if (saddExpire > 0) {
+                for (String expireKey : expireKeys) {
+                    pipelined.expire(expireKey, saddExpire);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();

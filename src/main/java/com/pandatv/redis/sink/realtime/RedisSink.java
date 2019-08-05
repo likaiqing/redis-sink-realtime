@@ -117,7 +117,6 @@ public class RedisSink extends AbstractSink implements Configurable {
             } else {
                 throw new EventDeliveryException(th);
             }
-
         } finally {
             if (transaction != null) {
                 transaction.close();
